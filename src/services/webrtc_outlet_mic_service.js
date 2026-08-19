@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "https://radio.sukashawarma.com/api";
+const API_URL = "https://api-radio.sukashawarma.com/api";
 
 class WebRTCOutletMicService {
     constructor() {

@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "http://100.120.244.13:8000/api";
+const API_URL = "https://api-radio.sukashawarma.com/api";
 
 // ============================================================
 // WEBRTC SERVICE (SIARAN BICARA LANGSUNG)

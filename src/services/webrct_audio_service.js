@@ -1,7 +1,7 @@
 import axios from "axios";
 import echo from "../websocket/echo";
 
-const API_URL = "https://radio.sukashawarma.com/api";
+const API_URL = "https://api-radio.sukashawarma.com/api";
 
 class WebRTCAudioService {
     constructor() {

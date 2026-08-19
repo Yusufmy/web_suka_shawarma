@@ -27,6 +27,27 @@ echo.connector.pusher.connection.bind("error", (err) => {
     console.error("🔌 Pusher connection error:", err);
 });
 
+// ============================================================
+// TEST LANGSUNG - independen dari kode dashboard manapun.
+// Kalau baris ini TIDAK PERNAH muncul di console pas ada
+// broadcast, berarti masalahnya di Echo/Pusher itu sendiri
+// (bukan di kode React OperatorDashboard).
+// ============================================================
+
+const __testChannel = echo.channel("outlets");
+
+__testChannel.listen(".webrtc.receiver.ready", (data) => {
+    console.log("🔥 [echo.js DIRECT TEST] webrtc.receiver.ready:", data);
+});
+
+__testChannel.subscribed(() => {
+    console.log("✅ [echo.js DIRECT TEST] channel 'outlets' subscribed");
+});
+
+__testChannel.error((err) => {
+    console.error("❌ [echo.js DIRECT TEST] channel 'outlets' error:", err);
+});
+
 window.__echo = echo;
 
 export default echo;

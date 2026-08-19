@@ -2,6 +2,10 @@ import axios from "axios";
 
 const API_URL = "https://api-radio.sukashawarma.com/api";
 
+const DEFAULT_ICE_SERVERS = [
+    { urls: "stun:stun.l.google.com:19302" },
+];
+
 class WebRTCOutletMicService {
     constructor() {
         this.peerConnection = null;
@@ -231,6 +235,32 @@ class WebRTCOutletMicService {
     // START
     // ============================================================
 
+    // ============================================================
+    // GET ICE SERVERS (STUN + TURN)
+    //
+    // Kredensial TURN time-limited, di-fetch dari backend supaya
+    // TURN_SECRET tidak pernah tertanam di bundle JS. Fallback ke
+    // STUN saja kalau endpoint gagal, supaya tetap bisa jalan
+    // (walau tanpa TURN) daripada gagal total.
+    // ============================================================
+
+    async getIceServers() {
+        try {
+            const { data } = await axios.get(
+                `${API_URL}/webrtc/ice-servers`
+            );
+
+            return data?.data?.iceServers || DEFAULT_ICE_SERVERS;
+        } catch (error) {
+            console.warn(
+                "⚠️ Gagal ambil ICE servers, fallback ke STUN saja:",
+                error
+            );
+
+            return DEFAULT_ICE_SERVERS;
+        }
+    }
+
     async start({
         roomId,
         outletId,
@@ -322,16 +352,18 @@ class WebRTCOutletMicService {
             this.remoteStream = null;
 
             // ----------------------------------------------------
+            // ICE SERVERS (STUN + TURN, kredensial time-limited)
+            // ----------------------------------------------------
+
+            const iceServers = await this.getIceServers();
+
+            // ----------------------------------------------------
             // CREATE PEER CONNECTION
             // ----------------------------------------------------
 
             this.peerConnection =
                 new RTCPeerConnection({
-                    iceServers: [
-                        {
-                            urls: "stun:stun.l.google.com:19302",
-                        },
-                    ],
+                    iceServers,
                 });
 
             const audioTransceiver =

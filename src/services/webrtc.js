@@ -2,6 +2,10 @@ import axios from "axios";
 
 const API_URL = "https://api-radio.sukashawarma.com/api";
 
+const DEFAULT_ICE_SERVERS = [
+    { urls: "stun:stun.l.google.com:19302" },
+];
+
 // ============================================================
 // WEBRTC SERVICE (SIARAN BICARA LANGSUNG)
 //
@@ -76,6 +80,32 @@ class WebRTCService {
     // handleOutletReady).
     // ============================================================
 
+    // ============================================================
+    // GET ICE SERVERS (STUN + TURN)
+    //
+    // Kredensial TURN time-limited, di-fetch dari backend supaya
+    // TURN_SECRET tidak pernah tertanam di bundle JS. Fallback ke
+    // STUN saja kalau endpoint gagal, supaya broadcast tetap bisa
+    // jalan (walau tanpa TURN) daripada gagal total.
+    // ============================================================
+
+    async getIceServers() {
+        try {
+            const { data } = await axios.get(
+                `${API_URL}/webrtc/ice-servers`
+            );
+
+            return data?.data?.iceServers || DEFAULT_ICE_SERVERS;
+        } catch (error) {
+            console.warn(
+                "⚠️ Gagal ambil ICE servers, fallback ke STUN saja:",
+                error
+            );
+
+            return DEFAULT_ICE_SERVERS;
+        }
+    }
+
     async startBroadcast(roomId, outlets = [], deviceId = null) {
         try {
             console.log("🎙️ START WEBRTC BROADCAST");
@@ -84,6 +114,7 @@ class WebRTCService {
 
             this.roomId = roomId;
             this.targetOutlets = outlets;
+            this.iceServers = await this.getIceServers();
 
             console.log("🎤 Requesting microphone...", { deviceId });
 
@@ -205,12 +236,9 @@ class WebRTCService {
 
             const peerConnection =
                 new RTCPeerConnection({
-                    iceServers: [
-                        {
-                            urls:
-                                "stun:stun.l.google.com:19302",
-                        },
-                    ],
+                    iceServers:
+                        this.iceServers ||
+                        DEFAULT_ICE_SERVERS,
                 });
 
             this.peerConnections.set(

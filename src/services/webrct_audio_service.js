@@ -3,6 +3,10 @@ import echo from "../websocket/echo";
 
 const API_URL = "https://api-radio.sukashawarma.com/api";
 
+const DEFAULT_ICE_SERVERS = [
+    { urls: "stun:stun.l.google.com:19302" },
+];
+
 class WebRTCAudioService {
     constructor() {
         // ========================================================
@@ -213,6 +217,32 @@ class WebRTCAudioService {
     // begitu mereka connect.
     // ============================================================
 
+    // ============================================================
+    // GET ICE SERVERS (STUN + TURN)
+    //
+    // Kredensial TURN time-limited, di-fetch dari backend supaya
+    // TURN_SECRET tidak pernah tertanam di bundle JS. Fallback ke
+    // STUN saja kalau endpoint gagal, supaya broadcast tetap bisa
+    // jalan (walau tanpa TURN) daripada gagal total.
+    // ============================================================
+
+    async getIceServers() {
+        try {
+            const { data } = await axios.get(
+                `${API_URL}/webrtc/ice-servers`
+            );
+
+            return data?.data?.iceServers || DEFAULT_ICE_SERVERS;
+        } catch (error) {
+            console.warn(
+                "⚠️ Gagal ambil ICE servers, fallback ke STUN saja:",
+                error
+            );
+
+            return DEFAULT_ICE_SERVERS;
+        }
+    }
+
     async start({
         audioUrl,
         roomId,
@@ -239,6 +269,16 @@ class WebRTCAudioService {
             // ====================================================
 
             await this.stop({ silent: true });
+
+            // ====================================================
+            // ICE SERVERS (STUN + TURN)
+            //
+            // Diambil sekali di awal broadcast, dipakai bareng
+            // buat semua outlet - kredensial TURN time-limited,
+            // jadi tidak di-fetch ulang per outlet.
+            // ====================================================
+
+            this.iceServers = await this.getIceServers();
 
             // ====================================================
             // SET DATA
@@ -607,12 +647,9 @@ class WebRTCAudioService {
 
             const peerConnection =
                 new RTCPeerConnection({
-                    iceServers: [
-                        {
-                            urls:
-                                "stun:stun.l.google.com:19302",
-                        },
-                    ],
+                    iceServers:
+                        this.iceServers ||
+                        DEFAULT_ICE_SERVERS,
                 });
 
             this.peerConnections.set(

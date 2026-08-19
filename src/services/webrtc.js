@@ -92,7 +92,8 @@ class WebRTCService {
     async getIceServers() {
         try {
             const { data } = await axios.get(
-                `${API_URL}/webrtc/ice-servers`
+                `${API_URL}/webrtc/ice-servers`,
+                { timeout: 4000 }
             );
 
             return data?.data?.iceServers || DEFAULT_ICE_SERVERS;

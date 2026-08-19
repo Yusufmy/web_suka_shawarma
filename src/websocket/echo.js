@@ -19,35 +19,44 @@ const echo = new Echo({
     enabledTransports: ["wss"],        // cukup wss aja, hapus "ws"
 });
 
-echo.connector.pusher.connection.bind("state_change", (states) => {
-    console.log("🔌 Pusher connection state:", states.previous, "→", states.current);
-});
-
-echo.connector.pusher.connection.bind("error", (err) => {
-    console.error("🔌 Pusher connection error:", err);
-});
-
-// ============================================================
-// TEST LANGSUNG - independen dari kode dashboard manapun.
-// Kalau baris ini TIDAK PERNAH muncul di console pas ada
-// broadcast, berarti masalahnya di Echo/Pusher itu sendiri
-// (bukan di kode React OperatorDashboard).
-// ============================================================
-
-const __testChannel = echo.channel("outlets");
-
-__testChannel.listen(".webrtc.receiver.ready", (data) => {
-    console.log("🔥 [echo.js DIRECT TEST] webrtc.receiver.ready:", data);
-});
-
-__testChannel.subscribed(() => {
-    console.log("✅ [echo.js DIRECT TEST] channel 'outlets' subscribed");
-});
-
-__testChannel.error((err) => {
-    console.error("❌ [echo.js DIRECT TEST] channel 'outlets' error:", err);
-});
+console.log("🔌 Echo instance created, connector:", echo.connector);
 
 window.__echo = echo;
+
+try {
+    console.log("🔌 STEP 1: mengakses echo.connector.pusher...");
+
+    const pusher = echo.connector.pusher;
+
+    console.log("🔌 STEP 1 OK, pusher:", pusher);
+
+    console.log("🔌 STEP 2: bind connection state_change...");
+
+    pusher.connection.bind("state_change", (states) => {
+        console.log("🔌 Pusher connection state:", states.previous, "→", states.current);
+    });
+
+    pusher.connection.bind("error", (err) => {
+        console.error("🔌 Pusher connection error:", err);
+    });
+
+    console.log("🔌 STEP 2 OK, current state right now:", pusher.connection.state);
+
+    console.log("🔌 STEP 3: subscribe channel outlets...");
+
+    const testChannel = echo.channel("outlets");
+
+    console.log("🔌 STEP 3 OK, channel object:", testChannel);
+
+    testChannel.listen(".webrtc.receiver.ready", (data) => {
+        console.log("🔥 [echo.js DIRECT TEST] webrtc.receiver.ready:", data);
+    });
+
+    console.log("🔌 STEP 4: semua listener terpasang, tidak ada error.");
+} catch (error) {
+    console.error("❌❌❌ ECHO SETUP GAGAL DI TENGAH JALAN:", error);
+    console.error("Pesan error:", error?.message);
+    console.error("Stack:", error?.stack);
+}
 
 export default echo;

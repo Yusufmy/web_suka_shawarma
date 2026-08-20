@@ -12,6 +12,24 @@ const outlet = {
 
         return response.data;
     },
+
+    create: async ({ code, name }) => {
+        const response = await api.post("/outlet", { code, name });
+
+        return response.data;
+    },
+
+    update: async (id, { code, name }) => {
+        const response = await api.put(`/outlet/${id}`, { code, name });
+
+        return response.data;
+    },
+
+    remove: async (id) => {
+        const response = await api.delete(`/outlet/${id}`);
+
+        return response.data;
+    },
 };
 
 export default outlet;

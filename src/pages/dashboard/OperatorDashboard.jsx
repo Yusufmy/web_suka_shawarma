@@ -17,6 +17,7 @@ import EmptyTab from "../../components/dashboard/Tabs/EmptyTab";
 import BroadcastPanel from "../../components/dashboard/Broadcast/BroadcastPanel";
 import UploadAudio from "../../components/dashboard/Upload/UploadAudio";
 import ScheduleAudio from "../../components/dashboard/Schedule/ScheduleAudio";
+import OutletManager from "../../components/dashboard/Outlets/OutletManager";
 
 import auth from "../../services/auth";
 import outlet from "../../services/outlet";
@@ -1456,6 +1457,10 @@ export default function OperatorDashboard() {
       ) : activeTab === "schedule" ? (
 
         <ScheduleAudio />
+
+      ) : activeTab === "outlets" ? (
+
+        <OutletManager />
 
       ) : (
 

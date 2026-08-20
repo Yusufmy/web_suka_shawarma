@@ -2,6 +2,7 @@ import {
   Mic,
   Upload,
   CalendarClock,
+  Store,
 } from "lucide-react";
 
 export const DASHBOARD_TABS = [
@@ -14,6 +15,11 @@ export const DASHBOARD_TABS = [
     id: "upload",
     label: "Unggah Audio",
     icon: Upload,
+  },
+  {
+    id: "outlets",
+    label: "Outlet",
+    icon: Store,
   },
   // {
   //   id: "schedule",

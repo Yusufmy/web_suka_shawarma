@@ -32,6 +32,7 @@ import WebRTCOutletMicService from "../../services/webrtc_outlet_mic_service";
 import {
     startBroadcast,
     endBroadcast,
+    cleanupStaleBroadcast,
 } from "../../services/broadcast";
 
 export function useMicDevices() {
@@ -216,6 +217,28 @@ export default function OperatorDashboard() {
   ///BROADCAST
   const [broadcastId, setBroadcastId] = useState(null);
   const [rtcRoomId, setRtcRoomId] = useState(null);
+
+  // ============================================================
+  // BERSIHKAN BROADCAST LIVE YANG "NYANGKUT"
+  //
+  // Kalau operator sebelumnya refresh/nutup tab pas broadcast live
+  // masih jalan, PeerConnection di browser langsung mati SAAT ITU
+  // JUGA (state JS hilang total pas reload) - tapi baris di database
+  // tidak pernah sempat di-update jadi "completed". Tanpa ini,
+  // operator tidak akan pernah bisa mulai broadcast baru lagi
+  // (selalu ditolak "masih ada broadcast yang sedang berlangsung").
+  // Dipanggil sekali begitu dashboard dibuka, sebelum operator
+  // sempat klik apapun.
+  // ============================================================
+
+  useEffect(() => {
+    cleanupStaleBroadcast().catch((error) => {
+      console.error(
+        "❌ Gagal membersihkan broadcast live yang tertinggal:",
+        error
+      );
+    });
+  }, []);
 
   // Selalu berisi rtcRoomId TERBARU, dipakai di dalam effect
   // "outlets" (deps []) yang cuma jalan sekali - closure state biasa
@@ -1443,7 +1466,7 @@ export default function OperatorDashboard() {
       />
 
       {/* Content */}
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 
        {activeTab === "upload" ? (
 

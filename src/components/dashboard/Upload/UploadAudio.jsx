@@ -72,6 +72,62 @@ export default function UploadAudio({
     useState("starting");
 
   // ============================================================
+  // BERITAHU OUTLET KALAU TAB DITUTUP/REFRESH SAAT MASIH BROADCAST
+  //
+  // beforeunload/pagehide TIDAK BISA menunggu request axios biasa
+  // selesai (browser keburu nutup tab-nya) - sendBeacon didesain
+  // khusus buat kasus ini: request dikirim best-effort tanpa
+  // menahan proses unload. Endpoint audio/broadcast/end sengaja
+  // tidak butuh token auth (lihat routes/api.php), jadi bisa
+  // dipanggil langsung dari sendBeacon (yang tidak bisa set header
+  // Authorization sama sekali).
+  // ============================================================
+
+  useEffect(() => {
+    function notifyBroadcastEndOnUnload() {
+      const roomId = WebRTCAudioService.roomId;
+
+      if (!roomId) {
+        return;
+      }
+
+      const outletIds = (WebRTCAudioService.outlets || []).map(
+        (o) => o.id
+      );
+
+      const blob = new Blob(
+        [
+          JSON.stringify({
+            room_id: roomId,
+            outlet_ids: outletIds,
+            natural: false,
+          }),
+        ],
+        { type: "application/json" }
+      );
+
+      navigator.sendBeacon(
+        "https://api-radio.sukashawarma.com/api/audio/webrtc/audio/broadcast/end",
+        blob
+      );
+    }
+
+    window.addEventListener("pagehide", notifyBroadcastEndOnUnload);
+    window.addEventListener("beforeunload", notifyBroadcastEndOnUnload);
+
+    return () => {
+      window.removeEventListener(
+        "pagehide",
+        notifyBroadcastEndOnUnload
+      );
+      window.removeEventListener(
+        "beforeunload",
+        notifyBroadcastEndOnUnload
+      );
+    };
+  }, []);
+
+  // ============================================================
   // GET AUDIO
   // ============================================================
 

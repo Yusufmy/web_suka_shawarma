@@ -64,3 +64,21 @@ export async function endBroadcast(broadcastId) {
 
     return response.data;
 }
+
+/**
+ * Bersihkan broadcast LIVE milik operator ini yang "nyangkut" -
+ * dipanggil otomatis begitu dashboard dibuka (lihat App\Service\
+ * Broadcast\BroadcastService::cleanupStaleForOperator).
+ */
+export async function cleanupStaleBroadcast() {
+    const response = await api.post("/broadcast/cleanup");
+
+    if (response.data?.cleaned) {
+        console.log(
+            "🧹 Broadcast live yang tertinggal berhasil dibersihkan:",
+            response.data.data
+        );
+    }
+
+    return response.data;
+}

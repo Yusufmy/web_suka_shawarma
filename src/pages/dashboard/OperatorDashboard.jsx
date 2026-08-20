@@ -1414,7 +1414,7 @@ export default function OperatorDashboard() {
         <UploadAudio
             targetMode={targetMode}
             selected={selected}
-            onlineOutlets={onlineOutlets}
+            outlets={outlets}
             onOutletAudioStateChange={handleOutletAudioStateChange}
         />
 

@@ -21,7 +21,7 @@ import alert from "../../../helpers/alert";
 export default function UploadAudio({
   targetMode = "all",
   selected = new Set(),
-  onlineOutlets = [],
+  outlets = [],
   onOutletAudioStateChange,
 }) {
   // ============================================================
@@ -507,20 +507,25 @@ export default function UploadAudio({
       // TARGET OUTLET
       //
       // Ikuti pilihan outlet operator (sidebar), sama seperti
-      // fitur bicara langsung: "all" -> semua outlet online,
-      // "specific" -> outlet yang dicentang.
+      // fitur bicara langsung: "all" -> SEMUA outlet (bukan cuma
+      // yang online - outlet offline/terminated tetap dapat
+      // notifikasi FCM dan bisa nyambung belakangan begitu app-nya
+      // dibuka), "specific" -> outlet yang dicentang (juga tanpa
+      // syarat online, sama seperti webrtc.js).
       // ========================================================
 
       const selectedOutlets =
         targetMode === "all"
-          ? onlineOutlets
-          : onlineOutlets.filter((outlet) =>
+          ? outlets
+          : outlets.filter((outlet) =>
               selected.has(outlet.id)
             );
 
       if (!selectedOutlets.length) {
         alert.error(
-          "Pilih minimal satu outlet yang online"
+          targetMode === "all"
+            ? "Tidak ada outlet terdaftar"
+            : "Pilih minimal satu outlet"
         );
 
         return;

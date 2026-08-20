@@ -28,6 +28,7 @@ import echo from "../../websocket/echo";
 import webrtc from "../../services/webrtc";
 import webrtcOutletMic from "../../services/webrtc_outlet_mic_service";
 import WebRTCOutletMicService from "../../services/webrtc_outlet_mic_service";
+import WebRTCAudioService from "../../services/webrct_audio_service";
 
 import {
     startBroadcast,
@@ -1190,6 +1191,20 @@ export default function OperatorDashboard() {
   // ============================================================
     const handleLogout = async () => {
       try {
+          // Jangan biarkan broadcast jalan sendirian tanpa operator
+          // yang bertanggung jawab - hentikan dulu SEBELUM token-nya
+          // di-invalidate (endBroadcast masih butuh token valid).
+          if (isLive && broadcastId) {
+              await handleStop();
+          }
+
+          await WebRTCAudioService.stop().catch((error) => {
+              console.error(
+                  "Gagal menghentikan broadcast audio saat logout:",
+                  error
+              );
+          });
+
           await auth.logout();
 
           // Hapus session operator

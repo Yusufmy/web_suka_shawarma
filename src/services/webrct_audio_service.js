@@ -1,5 +1,6 @@
 import axios from "axios";
 import echo from "../websocket/echo";
+import api from "./api";
 
 const API_URL = "https://api-radio.sukashawarma.com/api";
 
@@ -156,8 +157,12 @@ class WebRTCAudioService {
         audioUrl,
         outlets = [],
     }) {
-        await axios.post(
-            `${API_URL}/audio/webrtc/audio/broadcast`,
+        // Pakai instance `api` (bukan axios polos) - endpoint ini
+        // sekarang butuh token operator, supaya broadcast audio-file
+        // tersimpan ke database (lihat BroadcastService::startAudio),
+        // bukan cuma sinyal WebSocket sekali kirim seperti sebelumnya.
+        await api.post(
+            "/audio/webrtc/audio/broadcast",
             {
                 room_id: roomId,
 

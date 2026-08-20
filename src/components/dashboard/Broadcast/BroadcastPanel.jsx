@@ -15,10 +15,13 @@ export default function BroadcastPanel({
   targetCount,
   connectedOutlets,
   levels,
-  devices,          // 👈 tambahin
-  selectedDeviceId, // 👈 tambahin
-  onSelectDevice,   // 👈 tambahin
+  devices,
+  selectedDeviceId,
 }) {
+  const activeMicLabel =
+      devices.find((d) => d.deviceId === selectedDeviceId)?.label ||
+      "Mendeteksi mikrofon...";
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 overflow-y-auto px-4 py-8 sm:gap-8 sm:px-8 sm:py-10">
 
@@ -36,18 +39,9 @@ export default function BroadcastPanel({
         onStop={onStop}
       />
 
-      <select
-          value={selectedDeviceId || ""}
-          onChange={(e) => onSelectDevice(e.target.value)}
-          disabled={isLive}
-          className="rounded bg-neutral-800 px-3 py-2 text-sm text-white"
-      >
-          {devices.map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || `Mic ${d.deviceId.slice(0, 6)}`}
-              </option>
-          ))}
-      </select>
+      <p className="text-sm text-neutral-400">
+          🎤 {activeMicLabel}
+      </p>
 
       {/* Status */}
       <BroadcastStatus

@@ -39,6 +39,10 @@ export function useMicDevices() {
         () => localStorage.getItem("preferred_mic_id") || null
     );
 
+    // Device ID yang sudah pernah terlihat - dipakai buat deteksi
+    // "device baru muncul" (baru dicolok) di pengecekan berikutnya.
+    const knownDeviceIdsRef = useRef(null);
+
     useEffect(() => {
         async function loadDevices() {
             // Perlu izin mic dulu supaya label device kebaca
@@ -48,21 +52,52 @@ export function useMicDevices() {
                 .catch(() => {});
 
             const all = await navigator.mediaDevices.enumerateDevices();
-            const mics = all.filter((d) => d.kind === "audioinput");
+            const mics = all.filter(
+                (d) => d.kind === "audioinput" && d.deviceId
+            );
 
             setDevices(mics);
 
-            // Auto-pilih device tersimpan kalau masih ada, atau
-            // device pertama yang BUKAN "default"/built-in kalau
-            // ada eksternal terdeteksi
-            if (!selectedDeviceId && mics.length > 0) {
-                setSelectedDeviceId(mics[0].deviceId);
+            const currentIds = new Set(mics.map((d) => d.deviceId));
+            const isFirstLoad = knownDeviceIdsRef.current === null;
+
+            // Device yang baru saja muncul dibanding pengecekan
+            // sebelumnya (baru dicolok) - auto pindah ke situ, supaya
+            // mic eksternal yang baru dicolok langsung kepakai tanpa
+            // perlu pilih manual, walau sebelumnya sudah pakai mic
+            // internal.
+            const justPlugged = !isFirstLoad
+                ? mics.find(
+                      (d) => !knownDeviceIdsRef.current.has(d.deviceId)
+                  )
+                : null;
+
+            knownDeviceIdsRef.current = currentIds;
+
+            if (justPlugged) {
+                setSelectedDeviceId(justPlugged.deviceId);
+                localStorage.setItem(
+                    "preferred_mic_id",
+                    justPlugged.deviceId
+                );
+
+                return;
             }
+
+            // Device yang lagi dipilih sudah tidak ada lagi (dicabut),
+            // atau belum pernah pilih sama sekali - fallback ke yang
+            // pertama di daftar.
+            setSelectedDeviceId((current) =>
+                current && currentIds.has(current)
+                    ? current
+                    : mics[0]?.deviceId ?? null
+            );
         }
 
         loadDevices();
 
-        // Update daftar device kalau ada mic dicolok/dicabut
+        // Update daftar device (dan auto-switch) kalau ada mic
+        // dicolok/dicabut.
         navigator.mediaDevices.addEventListener(
             "devicechange",
             loadDevices
@@ -213,7 +248,7 @@ export default function OperatorDashboard() {
 
   //Open Mic
   const outletMicAudioRef = useRef(null);
-  const { devices, selectedDeviceId, selectDevice } = useMicDevices();
+  const { devices, selectedDeviceId } = useMicDevices();
 
   const isConnecting =
       broadcastStatus === "starting" ||
@@ -1453,9 +1488,8 @@ export default function OperatorDashboard() {
             targetCount={targetCount}
             connectedOutlets={connectedOutlets}
             levels={levels}
-            devices={devices}                    // 👈 tambahin
-            selectedDeviceId={selectedDeviceId}  // 👈 tambahin
-            onSelectDevice={selectDevice}        // 👈 tambahin
+            devices={devices}
+            selectedDeviceId={selectedDeviceId}
         />
       )}
 

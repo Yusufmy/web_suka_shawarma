@@ -30,6 +30,14 @@ const outlet = {
 
         return response.data;
     },
+
+    // Lepas paksa pairing device outlet (tablet hilang/rusak/
+    // diganti) - lihat OutletAuthService::resetDevice di backend.
+    resetDevice: async (id) => {
+        const response = await api.post(`/outlet/${id}/reset-device`);
+
+        return response.data;
+    },
 };
 
 export default outlet;

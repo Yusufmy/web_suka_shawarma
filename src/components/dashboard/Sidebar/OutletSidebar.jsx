@@ -15,6 +15,7 @@ export default function OutletSidebar({
     loading,
     confirmedOutletIds,
     playingOutletIds,
+    listeningOutletIds,
     isOpen = false,
     onClose,
 }) {
@@ -105,6 +106,7 @@ export default function OutletSidebar({
                         onToggle={onToggleOutlet}
                         confirmedOutletIds={confirmedOutletIds}
                         playingOutletIds={playingOutletIds}
+                        listeningOutletIds={listeningOutletIds}
                     />
                 )}
 

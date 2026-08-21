@@ -5,6 +5,7 @@ import {
   WifiOff,
   CheckCircle2,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 
 // Bahasa manusia untuk presence, sama seperti OutletItem.jsx di
@@ -63,7 +64,7 @@ function timeAgo(dateString) {
   return `${days} hari lalu`;
 }
 
-export default function OutletCard({ outlet, onEdit, onDelete }) {
+export default function OutletCard({ outlet, onEdit, onDelete, onResetDevice }) {
   const presence = presenceInfo(outlet.presence);
   const installed = Boolean(outlet.paired_at);
   const device = outlet.device_info;
@@ -155,7 +156,7 @@ export default function OutletCard({ outlet, onEdit, onDelete }) {
         <Smartphone size={14} className="mt-0.5 shrink-0" />
 
         {device ? (
-          <div className="min-w-0 space-y-0.5">
+          <div className="min-w-0 flex-1 space-y-0.5">
             <p className="truncate text-neutral-400">
               {device.model || "Model tidak diketahui"}
             </p>
@@ -173,6 +174,22 @@ export default function OutletCard({ outlet, onEdit, onDelete }) {
           <span>Belum ada info device</span>
         )}
       </div>
+
+      {/* Reset device - cuma relevan kalau outlet ini PERNAH
+          pairing (ada device_info). Dipakai kalau tablet-nya
+          hilang/rusak/diganti dan tidak sempat logout sendiri -
+          satu akun outlet cuma boleh 1 device yang lagi login,
+          tanpa ini device baru tidak akan pernah bisa login lagi. */}
+      {installed && (
+        <button
+          type="button"
+          onClick={() => onResetDevice(outlet)}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-neutral-800 py-1.5 text-[11px] font-medium text-neutral-400 transition hover:border-amber-500/40 hover:text-amber-400"
+        >
+          <RefreshCw size={12} />
+          Reset Device
+        </button>
+      )}
 
     </div>
   );

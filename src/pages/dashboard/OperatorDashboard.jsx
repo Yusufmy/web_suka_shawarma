@@ -165,6 +165,15 @@ export default function OperatorDashboard() {
   const [playingOutletIds, setPlayingOutletIds] =
     useState(new Set());
 
+  // outlet_id yang PeerConnection WebRTC siaran LANGSUNG (mic
+  // operator, bukan audio-file) sedang "connected" - dipakai buat
+  // badge "Sedang Mendengarkan" di sidebar. Sumbernya sama dengan
+  // connectedOutletIdsRef (dari webrtc.setConnectionStateListener),
+  // cuma disalin ke state React supaya bisa dipakai buat render UI -
+  // connectedOutletIdsRef sendiri cuma ref, tidak memicu re-render.
+  const [listeningOutletIds, setListeningOutletIds] =
+    useState(new Set());
+
   const handleOutletAudioStateChange = ({ outletId, state }) => {
       if (!outletId) {
           return;
@@ -836,6 +845,7 @@ export default function OperatorDashboard() {
           connectedOutletIdsRef.current.clear();
           setConnectedOutlets(0);
           setConfirmedOutletIds(new Set());
+          setListeningOutletIds(new Set());
           pendingReceiverReadyRef.current.clear();
 
           // ============================================
@@ -1103,6 +1113,10 @@ export default function OperatorDashboard() {
                       connectedOutletIdsRef.current.size
                   );
 
+                  setListeningOutletIds(
+                      new Set(connectedOutletIdsRef.current)
+                  );
+
                   setBroadcastStatus("live");
 
                   setIsLive(true);
@@ -1122,6 +1136,10 @@ export default function OperatorDashboard() {
 
                   setConnectedOutlets(
                       connectedOutletIdsRef.current.size
+                  );
+
+                  setListeningOutletIds(
+                      new Set(connectedOutletIdsRef.current)
                   );
 
                   // Kalau semua outlet sudah drop, baru
@@ -1171,6 +1189,7 @@ export default function OperatorDashboard() {
         connectedOutletIdsRef.current.clear();
         setConnectedOutlets(0);
         setConfirmedOutletIds(new Set());
+        setListeningOutletIds(new Set());
 
         setIsLive(false);
         setBroadcastStatus("idle");
@@ -1416,6 +1435,7 @@ export default function OperatorDashboard() {
       const clearConfirmed = () => {
           setConfirmedOutletIds(new Set());
           setPlayingOutletIds(new Set());
+          setListeningOutletIds(new Set());
       };
 
       channel.listen(".broadcast.ended", clearConfirmed);
@@ -1457,6 +1477,7 @@ export default function OperatorDashboard() {
         loading={loadingOutlets}
         confirmedOutletIds={confirmedOutletIds}
         playingOutletIds={playingOutletIds}
+        listeningOutletIds={listeningOutletIds}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
     />

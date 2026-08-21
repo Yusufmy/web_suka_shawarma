@@ -115,6 +115,41 @@ export default function OutletManager() {
   }
 
   // ============================================================
+  // RESET DEVICE
+  //
+  // Lepas paksa pairing device outlet - dipakai kalau tablet
+  // outlet hilang/rusak/diganti dan tidak sempat logout sendiri,
+  // sehingga device baru tidak bisa login (satu akun outlet cuma
+  // boleh 1 device yang lagi login, lihat OutletAuthService).
+  // ============================================================
+
+  async function handleResetDevice(outletItem) {
+    const confirmed = window.confirm(
+      `Reset device outlet "${outletItem.name}"? ` +
+        `Device yang sedang login di outlet ini akan terputus, ` +
+        `dan device baru bisa login menggantikannya.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await outlet.resetDevice(outletItem.id);
+
+      alert.success("Device outlet berhasil direset");
+
+      await fetchOutlets(false);
+    } catch (error) {
+      console.error("❌ Gagal reset device outlet:", error);
+
+      alert.error(
+        error?.response?.data?.message || "Gagal reset device outlet"
+      );
+    }
+  }
+
+  // ============================================================
   // RENDER
   // ============================================================
 
@@ -165,6 +200,7 @@ export default function OutletManager() {
                 outlet={item}
                 onEdit={openEditModal}
                 onDelete={handleDelete}
+                onResetDevice={handleResetDevice}
               />
             ))}
           </div>

@@ -1,6 +1,7 @@
 import {
   CheckCircle2,
   Circle,
+  Headphones,
   ThumbsUp,
   Volume2,
   WifiOff,
@@ -40,9 +41,18 @@ export default function OutletItem({
   onToggle,
   audioConfirmed,
   audioPlaying,
+  listeningLive,
 }) {
+  // Outlet offline TAPI sudah pernah login (device_info & paired_at
+  // tersimpan) tetap boleh dipilih sebagai target - siaran tetap
+  // bisa menjangkau mereka lewat FCM + foreground service standby
+  // begitu mereka online lagi. Yang TIDAK boleh dipilih cuma outlet
+  // yang memang belum pernah terhubung device apa pun sama sekali.
+  const hasLoggedInDevice =
+    Boolean(outlet.paired_at) && Boolean(outlet.device_info);
+
   const disabled =
-    outlet.status !== "online";
+    outlet.status !== "online" && !hasLoggedInDevice;
 
   const presence = presenceInfo(outlet.presence);
 
@@ -152,6 +162,20 @@ export default function OutletItem({
               className="flex-shrink-0 animate-pulse"
             />
             Memutar
+          </span>
+        )}
+
+        {/* Siaran LANGSUNG (mic operator) beneran sudah nyambung ke
+            outlet ini SEKARANG lewat WebRTC - ditampilkan terlepas
+            dari status online/offline di atas, karena koneksi WebRTC
+            ini independen dari heartbeat presence outlet. */}
+        {listeningLive && (
+          <span className="flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold text-violet-400">
+            <Headphones
+              size={10}
+              className="flex-shrink-0 animate-pulse"
+            />
+            Mendengarkan
           </span>
         )}
 

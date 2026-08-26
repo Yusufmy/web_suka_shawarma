@@ -9,8 +9,8 @@ const echo = new Echo({
     wsHost: import.meta.env.VITE_REVERB_HOST,
     wsPort: Number(import.meta.env.VITE_REVERB_PORT),
     wssPort: Number(import.meta.env.VITE_REVERB_PORT),
-    forceTLS: true,
-    enabledTransports: ["ws"],
+    forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? "https") === "https",
+    enabledTransports: ["ws", "wss"],
 });
 
 echo.connector.pusher.connection.bind("state_change", (states) => {

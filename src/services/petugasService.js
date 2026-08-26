@@ -1,19 +1,25 @@
 import axios from "axios";
 
 export const getApiBaseUrl = () => {
-  return (
-    localStorage.getItem("custom_api_url") ||
-    import.meta.env.VITE_API_BASE_URL ||
-    "https://api-radio.sukashawarma.com/api"
-  );
+  try {
+    return (
+      localStorage.getItem("custom_api_url") ||
+      import.meta.env.VITE_API_BASE_URL ||
+      "https://api-radio.sukashawarma.com/api"
+    );
+  } catch {
+    return import.meta.env.VITE_API_BASE_URL || "https://api-radio.sukashawarma.com/api";
+  }
 };
 
 export const setApiBaseUrl = (url) => {
-  if (url) {
-    localStorage.setItem("custom_api_url", url.trim());
-  } else {
-    localStorage.removeItem("custom_api_url");
-  }
+  try {
+    if (url) {
+      localStorage.setItem("custom_api_url", url.trim());
+    } else {
+      localStorage.removeItem("custom_api_url");
+    }
+  } catch {}
 };
 
 const getClient = () => {
@@ -28,12 +34,16 @@ const getClient = () => {
 };
 
 export const getOrCreateDeviceId = () => {
-  let deviceId = localStorage.getItem("petugas_device_id");
-  if (!deviceId) {
-    deviceId = `web_petugas_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`;
-    localStorage.setItem("petugas_device_id", deviceId);
+  try {
+    let deviceId = localStorage.getItem("petugas_device_id");
+    if (!deviceId) {
+      deviceId = `web_petugas_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`;
+      localStorage.setItem("petugas_device_id", deviceId);
+    }
+    return deviceId;
+  } catch {
+    return `web_petugas_fallback_${Date.now()}`;
   }
-  return deviceId;
 };
 
 export const petugasService = {

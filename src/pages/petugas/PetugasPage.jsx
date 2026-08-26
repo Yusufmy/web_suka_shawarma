@@ -5,14 +5,34 @@ import PetugasLive from "../../components/petugas/PetugasLive";
 import petugasService from "../../services/petugasService";
 import petugasReceiver from "../../services/petugasReceiver";
 
+const safeStorage = {
+  get: (key) => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set: (key, val) => {
+    try {
+      localStorage.setItem(key, typeof val === "string" ? val : JSON.stringify(val));
+    } catch {}
+  },
+  remove: (key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {}
+  },
+};
+
 export default function PetugasPage() {
   const [token, setToken] = useState(() => {
-    return localStorage.getItem("petugas_token") || null;
+    return safeStorage.get("petugas_token") || null;
   });
 
   const [outlet, setOutlet] = useState(() => {
     try {
-      const saved = localStorage.getItem("petugas_outlet_data");
+      const saved = safeStorage.get("petugas_outlet_data");
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
@@ -20,8 +40,8 @@ export default function PetugasPage() {
   });
 
   const [currentView, setCurrentView] = useState(() => {
-    const savedToken = localStorage.getItem("petugas_token");
-    const savedOutlet = localStorage.getItem("petugas_outlet_data");
+    const savedToken = safeStorage.get("petugas_token");
+    const savedOutlet = safeStorage.get("petugas_outlet_data");
     return savedToken && savedOutlet ? "waiting" : "login";
   });
 
@@ -29,15 +49,15 @@ export default function PetugasPage() {
   const [isConnectingAudio, setIsConnectingAudio] = useState(false);
 
   const [volume, setVolume] = useState(() => {
-    const savedVol = localStorage.getItem("petugas_volume");
-    return savedVol !== null ? parseFloat(savedVol) : 0.8;
+    const savedVol = safeStorage.get("petugas_volume");
+    return savedVol !== null && !isNaN(parseFloat(savedVol)) ? parseFloat(savedVol) : 0.8;
   });
 
   const audioRef = useRef(null);
 
   // Sync Volume
   useEffect(() => {
-    localStorage.setItem("petugas_volume", volume.toString());
+    safeStorage.set("petugas_volume", volume.toString());
     if (audioRef.current) {
       audioRef.current.volume = volume;
     }
@@ -86,9 +106,9 @@ export default function PetugasPage() {
   const handleLoginSuccess = ({ token: newToken, outlet: newOutlet }) => {
     setToken(newToken);
     setOutlet(newOutlet);
-    localStorage.setItem("petugas_token", newToken);
-    localStorage.setItem("petugas_outlet_data", JSON.stringify(newOutlet));
-    localStorage.setItem("petugas_outlet_name", newOutlet.name || "");
+    safeStorage.set("petugas_token", newToken);
+    safeStorage.set("petugas_outlet_data", JSON.stringify(newOutlet));
+    safeStorage.set("petugas_outlet_name", newOutlet.name || "");
     
     // Unlock browser audio context
     if (audioRef.current) {
@@ -108,8 +128,8 @@ export default function PetugasPage() {
     setOutlet(null);
     setBroadcastData(null);
     setIsConnectingAudio(false);
-    localStorage.removeItem("petugas_token");
-    localStorage.removeItem("petugas_outlet_data");
+    safeStorage.remove("petugas_token");
+    safeStorage.remove("petugas_outlet_data");
     setCurrentView("login");
   };
 

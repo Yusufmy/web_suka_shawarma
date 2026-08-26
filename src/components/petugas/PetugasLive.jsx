@@ -122,7 +122,11 @@ export default function PetugasLive({
 
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.roundRect(x, y, barWidth, barHeight, 3);
+        if (typeof ctx.roundRect === "function") {
+          ctx.roundRect(x, y, barWidth, barHeight, 3);
+        } else {
+          ctx.rect(x, y, barWidth, barHeight);
+        }
         ctx.fill();
       }
 

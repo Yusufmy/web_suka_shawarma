@@ -10,7 +10,8 @@ import {
   Activity,
   ArrowLeft,
   Headphones,
-  Music
+  Music,
+  Play
 } from "lucide-react";
 import petugasReceiver from "../../services/petugasReceiver";
 
@@ -25,6 +26,7 @@ export default function PetugasLive({
   const canvasRef = useRef(null);
   const [seconds, setSeconds] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
+  const [needsUserClick, setNeedsUserClick] = useState(false);
   const previousVolume = useRef(volume);
 
   // Timer counter
@@ -49,6 +51,22 @@ export default function PetugasLive({
     const mins = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
     const secs = String(totalSeconds % 60).padStart(2, "0");
     return `${mins}:${secs}`;
+  };
+
+  // Coba resume audio jika sempat dicegah browser
+  const resumeAudioPlay = () => {
+    if (petugasReceiver.audioContext && petugasReceiver.audioContext.state === "suspended") {
+      petugasReceiver.audioContext.resume();
+    }
+    if (petugasReceiver.audioElement) {
+      petugasReceiver.audioElement.muted = false;
+      petugasReceiver.audioElement.play().then(() => {
+        setNeedsUserClick(false);
+      }).catch((e) => {
+        console.warn("User play error:", e);
+      });
+    }
+    setNeedsUserClick(false);
   };
 
   // Real-time Canvas Waveform Animation
@@ -122,6 +140,7 @@ export default function PetugasLive({
     if (isMuted) {
       setIsMuted(false);
       onVolumeChange(previousVolume.current || 0.8);
+      resumeAudioPlay();
     } else {
       previousVolume.current = volume;
       setIsMuted(true);
@@ -177,11 +196,23 @@ export default function PetugasLive({
           </span>
         </div>
 
+        {/* Banner Klik untuk Putar jika dicegah browser */}
+        {needsUserClick && (
+          <button
+            onClick={resumeAudioPlay}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500/20 border border-amber-500/50 p-2.5 text-xs font-bold text-amber-300 animate-pulse hover:bg-amber-500/30 transition-all"
+          >
+            <Play className="h-4 w-4" />
+            <span>Klik di sini untuk Memutar Suara Speaker</span>
+          </button>
+        )}
+
         {/* Waveform Visualizer Canvas */}
-        <div className="mt-5 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/80 p-4">
+        <div className="mt-4 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/80 p-4">
           <canvas
             ref={canvasRef}
-            className="h-24 w-full block"
+            className="h-24 w-full block cursor-pointer"
+            onClick={resumeAudioPlay}
           />
 
           <div className="mt-3 flex items-center justify-between border-t border-neutral-800/80 pt-3 text-xs text-neutral-400">
@@ -242,6 +273,7 @@ export default function PetugasLive({
             onChange={(e) => {
               if (isMuted) setIsMuted(false);
               onVolumeChange(parseFloat(e.target.value));
+              resumeAudioPlay();
             }}
             className="w-full accent-orange-500 cursor-pointer h-1.5 rounded-lg bg-neutral-800"
           />

@@ -10,7 +10,8 @@ import {
   Activity,
   CheckCircle2,
   Headphones,
-  Signal
+  Signal,
+  Loader2
 } from "lucide-react";
 
 export default function PetugasWaiting({
@@ -20,6 +21,7 @@ export default function PetugasWaiting({
   onTriggerDemoLive,
   onLogout,
   wsConnected = true,
+  isConnectingAudio = false,
 }) {
   const [isPlayingTestTone, setIsPlayingTestTone] = useState(false);
 
@@ -92,22 +94,36 @@ export default function PetugasWaiting({
             
             {/* Central Icon */}
             <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-tr from-neutral-800 to-neutral-700 shadow-xl border border-neutral-600/50">
-              <Radio className="h-7 w-7 text-orange-400 animate-pulse" />
+              {isConnectingAudio ? (
+                <Loader2 className="h-7 w-7 text-orange-400 animate-spin" />
+              ) : (
+                <Radio className="h-7 w-7 text-orange-400 animate-pulse" />
+              )}
             </div>
           </div>
         </div>
 
         {/* Status Text */}
         <div className="text-center">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 text-xs font-bold text-emerald-400">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            STANDBY / SIAP MENERIMA SIARAN
-          </div>
+          {isConnectingAudio ? (
+            <div className="inline-flex items-center gap-2 rounded-full bg-orange-500/20 border border-orange-500/40 px-3.5 py-1 text-xs font-extrabold text-orange-300 animate-pulse">
+              <span className="h-2 w-2 rounded-full bg-orange-400 animate-ping"></span>
+              MENYAMBUNGKAN SUARA OPERATOR...
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 text-xs font-bold text-emerald-400">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              STANDBY / SIAP MENERIMA SIARAN
+            </div>
+          )}
+
           <h2 className="mt-3 text-lg font-bold text-white">
-            Menunggu Siaran Operator Pusat
+            {isConnectingAudio ? "Menerima Sinyal Siaran Pusat..." : "Menunggu Siaran Operator Pusat"}
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-neutral-400">
-            Koneksi WebSocket aktif. Begitu Operator Pusat memulai siaran bicara atau memutar audio, suara akan otomatis diputar di sini.
+            {isConnectingAudio
+              ? "Sedang melakukan jabat tangan (handshake) WebRTC audio. Halaman akan otomatis beralih begitu suara tersambung."
+              : "Koneksi WebSocket aktif. Begitu Operator Pusat memulai siaran bicara atau memutar audio, suara akan otomatis diputar di sini."}
           </p>
         </div>
 

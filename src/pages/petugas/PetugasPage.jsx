@@ -26,6 +26,7 @@ export default function PetugasPage() {
   });
 
   const [broadcastData, setBroadcastData] = useState(null);
+  const [isConnectingAudio, setIsConnectingAudio] = useState(false);
 
   const [volume, setVolume] = useState(() => {
     const savedVol = localStorage.getItem("petugas_volume");
@@ -48,14 +49,25 @@ export default function PetugasPage() {
       petugasReceiver.initAudio(audioRef.current);
     }
 
-    petugasReceiver.onBroadcastStarted = (data) => {
-      console.log("🎙️ Event Siaran Dimulai:", data);
+    // 1. Sinyal siaran masuk -> Tampilkan status menyambungkan di waiting screen
+    petugasReceiver.onBroadcastConnecting = (data) => {
+      console.log("🎙️ Event Siaran Dimulai (Menyambungkan audio WebRTC...):", data);
       setBroadcastData(data);
+      setIsConnectingAudio(true);
+    };
+
+    // 2. Audio track & WebRTC benar-benar terhubung -> Pindah ke LIVE (SAMA SEPERTI APK)
+    petugasReceiver.onAudioConnected = (data) => {
+      console.log("🔊 Audio WebRTC benar-benar terhubung! Beralih ke halaman LIVE");
+      setBroadcastData(data);
+      setIsConnectingAudio(false);
       setCurrentView("live");
     };
 
+    // 3. Sinyal siaran berakhir -> Kembali ke STANDBY
     petugasReceiver.onBroadcastEnded = () => {
-      console.log("🛑 Event Siaran Berakhir");
+      console.log("🛑 Event Siaran Berakhir, kembali ke STANDBY");
+      setIsConnectingAudio(false);
       setBroadcastData(null);
       setCurrentView("waiting");
     };
@@ -95,6 +107,7 @@ export default function PetugasPage() {
     setToken(null);
     setOutlet(null);
     setBroadcastData(null);
+    setIsConnectingAudio(false);
     localStorage.removeItem("petugas_token");
     localStorage.removeItem("petugas_outlet_data");
     setCurrentView("login");
@@ -112,6 +125,7 @@ export default function PetugasPage() {
 
   const handleStopLive = () => {
     setBroadcastData(null);
+    setIsConnectingAudio(false);
     setCurrentView("waiting");
   };
 
@@ -139,6 +153,7 @@ export default function PetugasPage() {
             onTriggerDemoLive={handleTriggerDemoLive}
             onLogout={handleLogout}
             wsConnected={petugasReceiver.isListening}
+            isConnectingAudio={isConnectingAudio}
           />
         )}
 
@@ -159,13 +174,13 @@ export default function PetugasPage() {
         </footer>
       </div>
 
-      {/* Hidden Audio Element for Streaming Playback */}
+      {/* Audio Element for Streaming Playback */}
       <audio
         ref={audioRef}
         id="petugas-remote-audio"
         autoPlay
         playsInline
-        className="hidden"
+        className="fixed -top-full -left-full opacity-0 pointer-events-none"
       />
     </div>
   );

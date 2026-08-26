@@ -13,11 +13,14 @@ class PetugasReceiver {
     this.audioContext = null;
     this.analyser = null;
     this.dataArray = null;
+    this.pendingRemoteIce = [];
+    this.readyRetryTimer = null;
+    this.remoteStream = null;
 
     // Callbacks for UI
-    this.onBroadcastStarted = null;
+    this.onBroadcastConnecting = null;
+    this.onAudioConnected = null;
     this.onBroadcastEnded = null;
-    this.onAudioPlaying = null;
     this.onConnectionState = null;
     this.isListening = false;
   }
@@ -25,6 +28,9 @@ class PetugasReceiver {
   // Inisialisasi audio element & audio context
   initAudio(audioEl) {
     this.audioElement = audioEl;
+    if (this.audioElement) {
+      this.audioElement.muted = false;
+    }
     if (!this.audioContext) {
       try {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -58,6 +64,7 @@ class PetugasReceiver {
   // Hentikan sesi
   stopSession() {
     this.stopHeartbeat();
+    this.clearReadyRetry();
     this.leaveRoomChannel();
     this.closePeerConnection();
 
@@ -75,19 +82,20 @@ class PetugasReceiver {
     this.outlet = null;
     this.token = null;
     this.currentBroadcast = null;
+    this.remoteStream = null;
   }
 
   // Heartbeat loop
   startHeartbeat() {
     this.stopHeartbeat();
-    if (this.token) {
+    if (this.token && this.token !== "offline_preview_token") {
       petugasService.sendHeartbeat(this.token);
+      this.heartbeatTimer = setInterval(() => {
+        if (this.token && this.token !== "offline_preview_token") {
+          petugasService.sendHeartbeat(this.token);
+        }
+      }, 15000);
     }
-    this.heartbeatTimer = setInterval(() => {
-      if (this.token) {
-        petugasService.sendHeartbeat(this.token);
-      }
-    }, 15000);
   }
 
   stopHeartbeat() {
@@ -99,7 +107,7 @@ class PetugasReceiver {
 
   // Cek siaran aktif saat app pertama kali dibuka
   async checkActiveBroadcast() {
-    if (!this.outlet?.id) return;
+    if (!this.outlet?.id || this.token === "offline_preview_token") return;
     try {
       const activeRes = await petugasService.getActiveBroadcast(this.outlet.id);
       if (activeRes?.active && activeRes?.data) {
@@ -161,8 +169,9 @@ class PetugasReceiver {
     }
 
     this.currentBroadcast = data;
-    if (this.onBroadcastStarted) {
-      this.onBroadcastStarted(data);
+    // Beri tahu UI bahwa siaran dimulai dan sedang dalam proses connecting WebRTC
+    if (this.onBroadcastConnecting) {
+      this.onBroadcastConnecting(data);
     }
 
     const roomId = data.rtc_room_id;
@@ -176,16 +185,20 @@ class PetugasReceiver {
     if (!this.isTargeted(data)) return;
 
     this.currentBroadcast = data;
-    if (this.onBroadcastStarted) {
-      this.onBroadcastStarted(data);
-    }
 
     // Jika ada file audio URL langsung
     if (data.audio?.url && this.audioElement) {
       this.audioElement.srcObject = null;
       this.audioElement.src = data.audio.url;
-      this.audioElement.play().catch((err) => {
+      this.audioElement.play().then(() => {
+        if (this.onAudioConnected) {
+          this.onAudioConnected(data);
+        }
+      }).catch((err) => {
         console.warn("Autoplay audio file terblokir:", err);
+        if (this.onAudioConnected) {
+          this.onAudioConnected(data);
+        }
       });
     }
   }
@@ -193,6 +206,7 @@ class PetugasReceiver {
   // Handler saat siaran berakhir
   handleBroadcastEnded(data) {
     console.log("Siaran berakhir, kembali ke standby");
+    this.clearReadyRetry();
     this.leaveRoomChannel();
     this.closePeerConnection();
 
@@ -208,45 +222,85 @@ class PetugasReceiver {
     }
   }
 
+  clearReadyRetry() {
+    if (this.readyRetryTimer) {
+      clearInterval(this.readyRetryTimer);
+      this.readyRetryTimer = null;
+    }
+  }
+
   // WebRTC Room Flow
   async joinWebRTCRoom(roomId, broadcastId) {
+    this.clearReadyRetry();
     this.leaveRoomChannel();
     this.closePeerConnection();
+    this.pendingRemoteIce = [];
 
-    // 1. Subscribe ke room channel `broadcast.${roomId}`
-    this.roomChannel = echo.channel(`broadcast.${roomId}`);
+    const outletId = parseInt(this.outlet?.id, 10);
 
-    this.roomChannel.listen(".webrtc.offer", (offerData) => {
+    // 1. Setup PeerConnection DULU
+    await this.setupPeerConnection(roomId, broadcastId);
+
+    // 2. Subscribe ke room channel `broadcast.${roomId}`
+    const roomChannelName = `broadcast.${roomId}`;
+    this.roomChannel = echo.channel(roomChannelName);
+
+    // Listen WebRTC Offer dari Operator
+    this.roomChannel.listen(".webrtc.offer", async (offerData) => {
       console.log("📥 Menerima WebRTC Offer dari Operator:", offerData);
-      // Validasi apakah offer untuk outlet ini
-      const targetOutletId = offerData.outlet_id;
-      if (targetOutletId && String(targetOutletId) !== String(this.outlet?.id)) {
+
+      const targetOutletId = offerData.outlet_id ? parseInt(offerData.outlet_id, 10) : null;
+      if (targetOutletId && targetOutletId !== outletId) {
+        console.log(`Offer untuk outlet ${targetOutletId}, bukan untuk outlet ${outletId}`);
         return;
       }
-      this.handleWebRTCOffer(offerData, roomId, broadcastId);
+
+      this.clearReadyRetry();
+      await this.handleWebRTCOffer(offerData, roomId, broadcastId);
     });
 
+    // Listen Operator ICE Candidate
     this.roomChannel.listen(".webrtc.operator.ice", (iceData) => {
       console.log("🧊 Menerima Operator ICE:", iceData);
-      const targetOutletId = iceData.outlet_id;
-      if (targetOutletId && String(targetOutletId) !== String(this.outlet?.id)) {
+      const targetOutletId = iceData.outlet_id ? parseInt(iceData.outlet_id, 10) : null;
+      if (targetOutletId && targetOutletId !== outletId) {
         return;
       }
       this.handleOperatorIce(iceData);
     });
 
-    // 2. Buat RTCPeerConnection & kirim sinyal "ready" ke Operator
-    await this.setupPeerConnection(roomId, broadcastId);
+    // 3. FUNGSI UNTUK KIRIM SINYAL RECEIVER READY
+    const sendReadySignal = async () => {
+      try {
+        console.log(`📤 Mengirim sinyal receiver ready (Room: ${roomId}, Outlet: ${outletId})...`);
+        await petugasService.sendReceiverReady({
+          roomId,
+          outletId,
+        });
+      } catch (e) {
+        console.error("Gagal mengirim receiver ready:", e);
+      }
+    };
 
-    try {
-      console.log("📤 Mengirim sinyal receiver ready...");
-      await petugasService.sendReceiverReady({
-        roomId,
-        outletId: this.outlet.id,
-      });
-    } catch (e) {
-      console.error("Gagal mengirim receiver ready:", e);
-    }
+    // 4. Pastikan channel sudah tersubscribe sebelum kirim ready, atau kirim langsung + retry
+    this.roomChannel.subscribed(async () => {
+      console.log(`✅ WebRTC Room Channel ${roomChannelName} subscribed!`);
+      await sendReadySignal();
+    });
+
+    // Fallback: Kirim sinyal ready langsung & ulangi tiap 1.5 detik jika offer belum datang (maksimal 3x)
+    let retryCount = 0;
+    await sendReadySignal();
+
+    this.readyRetryTimer = setInterval(async () => {
+      retryCount++;
+      if (retryCount > 3 || (this.peerConnection && this.peerConnection.remoteDescription)) {
+        this.clearReadyRetry();
+        return;
+      }
+      console.log(`🔄 Retry receiver ready signal ke-${retryCount}...`);
+      await sendReadySignal();
+    }, 1500);
   }
 
   async setupPeerConnection(roomId, broadcastId) {
@@ -256,52 +310,90 @@ class PetugasReceiver {
       sdpSemantics: "unified-plan",
     };
 
+    const outletId = parseInt(this.outlet?.id, 10);
+
     this.peerConnection = new RTCPeerConnection(config);
 
     // Audio Receiver Transceiver
     this.peerConnection.addTransceiver("audio", { direction: "recvonly" });
 
-    // Track event: audio diterima
+    // Track event: audio diterima dari Operator (SEPERTI FLUTTER APK)
     this.peerConnection.ontrack = (event) => {
-      console.log("🔊 WebRTC Remote Track diterima:", event.track);
-      if (event.streams && event.streams[0] && this.audioElement) {
-        this.audioElement.srcObject = event.streams[0];
-        this.audioElement.play().catch((err) => {
-          console.warn("Autoplay terblokir browser, butuh interaksi user:", err);
-        });
+      console.log("==========================================");
+      console.log("🔊 REMOTE AUDIO TRACK DITERIMA DARI OPERATOR!");
+      console.log("Kind:", event.track.kind, "Streams:", event.streams.length);
+      console.log("==========================================");
 
-        // Hubungkan ke Web Audio API Analyser
+      if (event.streams && event.streams[0]) {
+        this.remoteStream = event.streams[0];
+
+        if (this.audioElement) {
+          this.audioElement.srcObject = this.remoteStream;
+          this.audioElement.muted = false;
+
+          const playPromise = this.audioElement.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                console.log("▶️ Audio streaming berhasil diputar di speaker!");
+              })
+              .catch((err) => {
+                console.warn("⚠️ Autoplay dicegah browser, butuh interaksi klik:", err);
+              });
+          }
+        }
+
+        // Hubungkan ke Web Audio API Analyser untuk visualizer gelombang suara
         if (this.audioContext && this.analyser) {
           try {
             if (this.audioContext.state === "suspended") {
               this.audioContext.resume();
             }
-            const source = this.audioContext.createMediaStreamSource(event.streams[0]);
+            const source = this.audioContext.createMediaStreamSource(this.remoteStream);
             source.connect(this.analyser);
+            console.log("📊 Analyser berhasil tersambung ke stream");
           } catch (err) {
             console.warn("Analyser connection error:", err);
           }
         }
+
+        // HANYA PINDAH KE HALAMAN LIVE KETIKA AUDIO TRACK BENAR-BENAR DITERIMA
+        if (this.onAudioConnected && this.currentBroadcast) {
+          this.onAudioConnected(this.currentBroadcast);
+        }
       }
     };
 
-    // ICE Candidate
+    // ICE Candidate dari Petugas dikirim balik ke Operator
     this.peerConnection.onicecandidate = (event) => {
-      if (event.candidate) {
+      if (event.candidate && event.candidate.candidate) {
+        console.log("🧊 Mengirim ICE Petugas ke Operator:", event.candidate.candidate);
         petugasService.sendIceCandidate({
           roomId,
-          outletId: this.outlet.id,
-          candidate: event.candidate.toJSON(),
+          outletId,
+          candidate: {
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex,
+          },
         });
       }
     };
 
     this.peerConnection.onconnectionstatechange = () => {
       const state = this.peerConnection?.connectionState;
-      console.log("🔗 WebRTC Connection State:", state);
+      console.log(`🔗 WebRTC Connection State: ${state}`);
       if (this.onConnectionState) {
         this.onConnectionState(state);
       }
+
+      if (state === "connected" && this.onAudioConnected && this.currentBroadcast) {
+        this.onAudioConnected(this.currentBroadcast);
+      }
+    };
+
+    this.peerConnection.oniceconnectionstatechange = () => {
+      console.log(`🧊 WebRTC ICE Connection State: ${this.peerConnection?.iceConnectionState}`);
     };
   }
 
@@ -311,30 +403,69 @@ class PetugasReceiver {
     }
 
     try {
+      const outletId = parseInt(this.outlet?.id, 10);
       const rawOffer = offerData.offer || offerData;
+
+      if (!rawOffer || !rawOffer.sdp) {
+        console.warn("Format Offer tidak valid:", rawOffer);
+        return;
+      }
+
+      console.log("📄 Setting Remote Description (Offer)...");
       await this.peerConnection.setRemoteDescription(
-        new RTCSessionDescription(rawOffer)
+        new RTCSessionDescription({
+          type: rawOffer.type || "offer",
+          sdp: rawOffer.sdp,
+        })
       );
 
+      // Flush pending ICE candidates dari operator yang datang lebih awal
+      if (this.pendingRemoteIce.length > 0) {
+        console.log(`🧊 Menerapkan ${this.pendingRemoteIce.length} buffered ICE candidates...`);
+        for (const cand of this.pendingRemoteIce) {
+          try {
+            await this.peerConnection.addIceCandidate(new RTCIceCandidate(cand));
+          } catch (e) {
+            console.warn("Error adding buffered ICE:", e);
+          }
+        }
+        this.pendingRemoteIce = [];
+      }
+
+      console.log("📝 Creating WebRTC Answer...");
       const answer = await this.peerConnection.createAnswer();
       await this.peerConnection.setLocalDescription(answer);
 
-      console.log("📤 Mengirim WebRTC Answer ke Operator...");
+      console.log(`📤 Mengirim WebRTC Answer ke Operator (Room: ${roomId}, Outlet: ${outletId})...`);
       await petugasService.sendAnswer({
         roomId,
-        outletId: this.outlet.id,
+        outletId,
         sdp: answer.sdp,
       });
+
+      console.log("✅ WebRTC Answer berhasil terkirim!");
     } catch (err) {
-      console.error("Gagal memproses WebRTC Offer:", err);
+      console.error("❌ Gagal memproses WebRTC Offer:", err);
     }
   }
 
   async handleOperatorIce(iceData) {
-    if (!this.peerConnection || !iceData.candidate) return;
+    const cand = iceData.candidate || iceData;
+    if (!cand || !cand.candidate) return;
+
+    if (!this.peerConnection || !this.peerConnection.remoteDescription) {
+      console.log("⏳ Buffering Operator ICE candidate...");
+      this.pendingRemoteIce.push(cand);
+      return;
+    }
+
     try {
       await this.peerConnection.addIceCandidate(
-        new RTCIceCandidate(iceData.candidate)
+        new RTCIceCandidate({
+          candidate: cand.candidate,
+          sdpMid: cand.sdpMid,
+          sdpMLineIndex: cand.sdpMLineIndex,
+        })
       );
     } catch (e) {
       console.warn("Gagal add ICE candidate:", e);
@@ -350,6 +481,10 @@ class PetugasReceiver {
 
   closePeerConnection() {
     if (this.peerConnection) {
+      this.peerConnection.onconnectionstatechange = null;
+      this.peerConnection.onicecandidate = null;
+      this.peerConnection.oniceconnectionstatechange = null;
+      this.peerConnection.ontrack = null;
       this.peerConnection.close();
       this.peerConnection = null;
     }

@@ -99,10 +99,8 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
   };
 
   const presetOutlets = [
-    "OTL-Empang",
-    "Outlet Sudirman",
-    "Outlet Tebet",
-    "Pimpinan / Direksi",
+    "Outlet Pusat1",
+    "Outlet Pusat2",
   ];
 
   return (
@@ -228,7 +226,7 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
                 type="text"
                 value={outletName}
                 onChange={(e) => setOutletName(e.target.value)}
-                placeholder="Contoh: OTL-Empang / Pimpinan"
+                placeholder="Contoh: Outlet Pusat1"
                 required
                 className="w-full rounded-xl border border-neutral-800 bg-neutral-950/70 py-3 pl-11 pr-4 text-sm font-medium text-white placeholder-neutral-500 transition-all focus:border-orange-500 focus:bg-neutral-950 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
               />
@@ -243,8 +241,8 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
             <span className="block text-xs font-medium text-neutral-400 mb-2">
               Pilihan Cepat:
             </span>
-            <div className="flex flex-wrap gap-1.5">
-              {(outletsList.length > 0 ? outletsList.map((o) => o.name) : presetOutlets).map((item) => (
+            <div className="grid grid-cols-2 gap-2">
+              {presetOutlets.map((item) => (
                 <button
                   key={item}
                   type="button"
@@ -252,10 +250,10 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
                     setOutletName(item);
                     setErrorMsg("");
                   }}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all text-center ${
                     outletName === item
-                      ? "bg-orange-500/20 text-orange-400 border border-orange-500/40"
-                      : "bg-neutral-800/60 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border border-neutral-700/50"
+                      ? "bg-orange-500/20 text-orange-400 border border-orange-500/50 shadow-sm shadow-orange-500/20"
+                      : "bg-neutral-800/70 text-neutral-300 hover:bg-neutral-800 hover:text-white border border-neutral-700/60"
                   }`}
                 >
                   {item}

@@ -3,7 +3,14 @@ import axios from "axios";
 const API_URL = "https://api-radio.sukashawarma.com/api";
 
 const DEFAULT_ICE_SERVERS = [
-    { urls: "stun:stun.l.google.com:19302" },
+    {
+        urls: [
+            "stun:stun.l.google.com:19302",
+            "stun:stun1.l.google.com:19302",
+            "stun:stun2.l.google.com:19302",
+            "stun:stun.cloudflare.com:3478",
+        ],
+    },
 ];
 
 // ============================================================
@@ -71,24 +78,6 @@ class WebRTCService {
         this.onConnectionStateChange = callback;
     }
 
-    // ============================================================
-    // START BROADCAST
-    //
-    // Ambil mic SEKALI, simpan daftar outlet target. Belum bikin
-    // PeerConnection apa pun di sini - itu baru dibuat per outlet
-    // begitu outlet itu mengirim sinyal "ready" (lihat
-    // handleOutletReady).
-    // ============================================================
-
-    // ============================================================
-    // GET ICE SERVERS (STUN + TURN)
-    //
-    // Kredensial TURN time-limited, di-fetch dari backend supaya
-    // TURN_SECRET tidak pernah tertanam di bundle JS. Fallback ke
-    // STUN saja kalau endpoint gagal, supaya broadcast tetap bisa
-    // jalan (walau tanpa TURN) daripada gagal total.
-    // ============================================================
-
     async getIceServers() {
         try {
             const { data } = await axios.get(
@@ -96,7 +85,18 @@ class WebRTCService {
                 { timeout: 4000 }
             );
 
-            return data?.data?.iceServers || DEFAULT_ICE_SERVERS;
+            const servers = data?.data?.iceServers || [];
+            return [
+                {
+                    urls: [
+                        "stun:stun.l.google.com:19302",
+                        "stun:stun1.l.google.com:19302",
+                        "stun:stun2.l.google.com:19302",
+                        "stun:stun.cloudflare.com:3478",
+                    ],
+                },
+                ...servers.filter((s) => !s.urls?.includes("stun:stun.l.google.com:19302")),
+            ];
         } catch (error) {
             console.warn(
                 "⚠️ Gagal ambil ICE servers, fallback ke STUN saja:",
@@ -433,7 +433,10 @@ class WebRTCService {
 
     async handleAnswer(outletId, answer) {
         try {
+            const id = Number(outletId);
             const peerConnection =
+                this.peerConnections.get(id) ||
+                this.peerConnections.get(String(outletId)) ||
                 this.peerConnections.get(outletId);
 
             if (!peerConnection) {
@@ -502,7 +505,10 @@ class WebRTCService {
 
     async handleIceCandidate(outletId, candidate) {
         try {
+            const id = Number(outletId);
             const peerConnection =
+                this.peerConnections.get(id) ||
+                this.peerConnections.get(String(outletId)) ||
                 this.peerConnections.get(outletId);
 
             if (!peerConnection) {

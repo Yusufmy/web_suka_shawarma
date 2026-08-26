@@ -121,13 +121,27 @@ export const petugasService = {
 
   // 6. Ambil ICE servers untuk WebRTC
   async getIceServers() {
+    const defaultStun = [
+      {
+        urls: [
+          "stun:stun.l.google.com:19302",
+          "stun:stun1.l.google.com:19302",
+          "stun:stun2.l.google.com:19302",
+          "stun:stun.cloudflare.com:3478",
+        ],
+      },
+    ];
     try {
       const client = getClient();
       const response = await client.get("/webrtc/ice-servers");
-      return response.data?.data?.iceServers || [{ urls: "stun:stun.l.google.com:19302" }];
+      const servers = response.data?.data?.iceServers || [];
+      return [
+        ...defaultStun,
+        ...servers.filter((s) => !s.urls?.includes("stun:stun.l.google.com:19302")),
+      ];
     } catch (error) {
       console.warn("Fallback ke STUN default:", error.message);
-      return [{ urls: "stun:stun.l.google.com:19302" }];
+      return defaultStun;
     }
   },
 

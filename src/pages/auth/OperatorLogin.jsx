@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 import AuthBrand from "../../components/auth/AuthBrand";
 import EmailField from "../../components/auth/EmailFailed";
@@ -140,8 +140,19 @@ export default function OperatorLogin() {
 
                 </div>
 
+                {/* Switch to Petugas Listener Mode */}
+                <div className="mt-4 text-center">
+                    <Link
+                        to="/petugas"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-orange-400 hover:text-orange-300 transition-colors"
+                    >
+                        <span>Mode Web Listener (Petugas / Atasan)</span>
+                        <span>&rarr;</span>
+                    </Link>
+                </div>
+
                 {/* Footer */}
-                <p className="mt-6 px-4 text-center text-[11px] leading-relaxed text-neutral-600">
+                <p className="mt-4 px-4 text-center text-[11px] leading-relaxed text-neutral-600">
                     Akses terbatas untuk operator kantor pusat.
                     Hubungi administrator jika belum memiliki akun.
                 </p>

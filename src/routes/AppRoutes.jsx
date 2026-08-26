@@ -7,6 +7,7 @@ import {
 
 import OperatorLogin from "../pages/auth/OperatorLogin";
 import OperatorDashboard from "../pages/dashboard/OperatorDashboard";
+import PetugasPage from "../pages/petugas/PetugasPage";
 import ProtectedRoute from "../components/auth/ProtectedRoute";
 import GuestRoute from "../components/auth/GuestRoute";
 
@@ -15,7 +16,17 @@ export default function AppRoutes() {
         <BrowserRouter>
             <Routes>
 
-                {/* Login (hanya kalau belum login) */}
+                {/* Web Listener / Petugas / Atasan */}
+                <Route
+                    path="/petugas"
+                    element={<PetugasPage />}
+                />
+                <Route
+                    path="/listener"
+                    element={<PetugasPage />}
+                />
+
+                {/* Login Operator (hanya kalau belum login) */}
                 <Route element={<GuestRoute />}>
 
                     <Route
@@ -25,7 +36,7 @@ export default function AppRoutes() {
 
                 </Route>
 
-                {/* Protected Routes */}
+                {/* Protected Routes Operator */}
                 <Route element={<ProtectedRoute />}>
 
                     <Route

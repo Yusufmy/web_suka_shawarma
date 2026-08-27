@@ -40,6 +40,15 @@ export default function UploadAudio({
   const [playingId, setPlayingId] = useState(null);
 
   /**
+   * Progres playback audio (menit/detik & persentase)
+   */
+  const [playbackProgress, setPlaybackProgress] = useState({
+    currentTime: 0,
+    duration: 0,
+    percentage: 0,
+  });
+
+  /**
    * Data audio
    */
   const [audios, setAudios] = useState([]);
@@ -185,10 +194,25 @@ export default function UploadAudio({
   }, []);
 
   // ============================================================
-  // LISTENER WEBRTC AUDIO SERVICE
+  // LISTENER WEBRTC AUDIO SERVICE & PROGRESS
   // ============================================================
 
   useEffect(() => {
+
+    WebRTCAudioService.setProgressCallback(
+      ({ currentTime, duration }) => {
+        const percentage =
+          duration > 0
+            ? Math.min(100, Math.max(0, (currentTime / duration) * 100))
+            : 0;
+
+        setPlaybackProgress({
+          currentTime,
+          duration,
+          percentage,
+        });
+      }
+    );
 
     WebRTCAudioService.setStateListener(
       (state) => {
@@ -202,20 +226,17 @@ export default function UploadAudio({
         // STATE STRING
         // ------------------------------------------------------
 
-        if (state === "stopped") {
+        if (state === "stopped" || state === "ended") {
 
           setPlayingId(null);
 
           setBroadcastLoading(false);
 
-          return;
-        }
-
-        if (state === "ended") {
-
-          setPlayingId(null);
-
-          setBroadcastLoading(false);
+          setPlaybackProgress({
+            currentTime: 0,
+            duration: 0,
+            percentage: 0,
+          });
 
           return;
         }
@@ -435,6 +456,21 @@ export default function UploadAudio({
 
       const mb = kb / 1024;
       return `${mb.toFixed(2)} MB`;
+  }
+
+  // ============================================================
+  // FORMAT TIME (MM:SS)
+  // ============================================================
+
+  function formatTime(seconds) {
+      if (!seconds || isNaN(seconds) || seconds <= 0) {
+          return "00:00";
+      }
+
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+
+      return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   }
 
   // ============================================================
@@ -1031,195 +1067,215 @@ export default function UploadAudio({
                 (audioItem) => {
 
                   const isPlaying =
-                    playingId ===
-                    audioItem.id;
+                    playingId === audioItem.id;
 
                   return (
-
                     <div
                       key={audioItem.id}
-                      className="
+                      className={`
                         flex
-                        items-center
-                        gap-4
+                        flex-col
                         rounded-xl
                         border
-                        border-neutral-800
-                        bg-neutral-900
                         px-4
                         py-3
-                        transition
-                        hover:border-neutral-700
-                      "
-                    >
-
-                      {/* ========================================
-                          ICON
-                      ======================================== */}
-
-                      <div
-                        className="
-                          flex
-                          h-10
-                          w-10
-                          flex-shrink-0
-                          items-center
-                          justify-center
-                          rounded-lg
-                          bg-orange-500/10
-                        "
-                      >
-
-                        <FileAudio
-                          size={19}
-                          className="text-orange-500"
-                        />
-
-                      </div>
-
-                      {/* ========================================
-                          INFO
-                      ======================================== */}
-
-                      <div
-                        className="
-                          min-w-0
-                          flex-1
-                        "
-                      >
-
-                        <p
-                          className="
-                            truncate
-                            text-sm
-                            font-medium
-                            text-neutral-200
-                          "
-                        >
-                          {audioItem.name ||
-                            audioItem.original_name ||
-                            "Audio"}
-                        </p>
-
-                        <p
-                          className="
-                            mt-0.5
-                            text-xs
-                            text-neutral-500
-                          "
-                        >
-                          {formatSize(
-                            audioItem.size_bytes
-                          )}
-                        </p>
-
-                      </div>
-
-                      {/* ========================================
-                          PLAY / PAUSE
-                      ======================================== */}
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handlePlay(
-                            audioItem
-                          )
-                        }
-                        disabled={
-                          broadcastLoading
-                        }
-                        className="
-                          flex
-                          h-8
-                          w-8
-                          items-center
-                          justify-center
-                          rounded-lg
-                          text-neutral-500
-                          transition
-                          hover:bg-neutral-800
-                          hover:text-white
-                          disabled:cursor-not-allowed
-                          disabled:opacity-50
-                        "
-                        title={
+                        transition-all
+                        duration-200
+                        ${
                           isPlaying
-                            ? "Stop"
-                            : "Broadcast"
+                            ? "border-orange-500/60 bg-neutral-900 shadow-lg shadow-orange-950/20"
+                            : "border-neutral-800 bg-neutral-900 hover:border-neutral-700"
                         }
-                      >
+                      `}
+                    >
+                      <div className="flex items-center gap-4">
+                        {/* ========================================
+                            ICON
+                        ======================================== */}
 
-                        {isPlaying ? (
-
-                          <Pause
-                            size={15}
+                        <div
+                          className={`
+                            flex
+                            h-10
+                            w-10
+                            flex-shrink-0
+                            items-center
+                            justify-center
+                            rounded-lg
+                            transition-colors
+                            ${
+                              isPlaying
+                                ? "bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/30"
+                                : "bg-orange-500/10 text-orange-500"
+                            }
+                          `}
+                        >
+                          <FileAudio
+                            size={19}
+                            className={isPlaying ? "animate-pulse" : ""}
                           />
+                        </div>
 
-                        ) : (
+                        {/* ========================================
+                            INFO
+                        ======================================== */}
 
-                          <Play
-                            size={15}
-                          />
+                        <div
+                          className="
+                            min-w-0
+                            flex-1
+                          "
+                        >
+                          <p
+                            className={`
+                              truncate
+                              text-sm
+                              font-medium
+                              ${
+                                isPlaying
+                                  ? "font-semibold text-orange-300"
+                                  : "text-neutral-200"
+                              }
+                            `}
+                          >
+                            {audioItem.name ||
+                              audioItem.original_name ||
+                              "Audio"}
+                          </p>
 
-                        )}
+                          <div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-500">
+                            <span>{formatSize(audioItem.size_bytes)}</span>
+                            {isPlaying && (
+                              <span className="flex items-center gap-1 font-mono text-[11px] text-orange-400">
+                                • Sedang Mengudara
+                              </span>
+                            )}
+                          </div>
+                        </div>
 
-                      </button>
+                        {/* ========================================
+                            PLAY / PAUSE
+                        ======================================== */}
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handlePlay(
+                              audioItem
+                            )
+                          }
+                          disabled={
+                            broadcastLoading
+                          }
+                          className={`
+                            flex
+                            h-8
+                            w-8
+                            items-center
+                            justify-center
+                            rounded-lg
+                            transition
+                            disabled:cursor-not-allowed
+                            disabled:opacity-50
+                            ${
+                              isPlaying
+                                ? "bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/40 hover:bg-orange-500/30"
+                                : "text-neutral-500 hover:bg-neutral-800 hover:text-white"
+                            }
+                          `}
+                          title={
+                            isPlaying
+                              ? "Stop"
+                              : "Broadcast"
+                          }
+                        >
+                          {isPlaying ? (
+                            <Pause
+                              size={15}
+                            />
+                          ) : (
+                            <Play
+                              size={15}
+                            />
+                          )}
+                        </button>
+
+                        {/* ========================================
+                            DELETE
+                        ======================================== */}
+
+                        <button
+                          type="button"
+                          disabled={
+                            deletingId ===
+                              audioItem.id ||
+                            isPlaying ||
+                            broadcastLoading
+                          }
+                          onClick={() =>
+                            handleDelete(
+                              audioItem.id
+                            )
+                          }
+                          className="
+                            flex
+                            h-8
+                            w-8
+                            items-center
+                            justify-center
+                            rounded-lg
+                            text-neutral-600
+                            transition
+                            hover:bg-red-500/10
+                            hover:text-red-400
+                            disabled:cursor-not-allowed
+                            disabled:opacity-50
+                          "
+                          title="Hapus"
+                        >
+                          {deletingId ===
+                          audioItem.id ? (
+                            <Loader2
+                              size={15}
+                              className="
+                                animate-spin
+                              "
+                            />
+                          ) : (
+                            <Trash2
+                              size={15}
+                            />
+                          )}
+                        </button>
+                      </div>
 
                       {/* ========================================
-                          DELETE
+                          READ-ONLY PROGRESS BAR
+                          (Tidak bisa di-scrub / diubah-ubah durasi & progress-nya)
                       ======================================== */}
+                      {isPlaying && (
+                        <div className="mt-3 border-t border-neutral-800/80 pt-2.5 select-none pointer-events-none">
+                          <div className="mb-1.5 flex items-center justify-between font-mono text-[11px] font-medium text-neutral-400">
+                            <span className="flex items-center gap-1.5 font-semibold text-orange-400">
+                              <span className="inline-block h-1.5 w-1.5 animate-ping rounded-full bg-orange-500" />
+                              {formatTime(playbackProgress.currentTime)}
+                            </span>
+                            <span className="font-semibold text-neutral-400">
+                              {formatTime(playbackProgress.duration)}
+                            </span>
+                          </div>
 
-                      <button
-                        type="button"
-                        disabled={
-                          deletingId ===
-                            audioItem.id ||
-                          isPlaying ||
-                          broadcastLoading
-                        }
-                        onClick={() =>
-                          handleDelete(
-                            audioItem.id
-                          )
-                        }
-                        className="
-                          flex
-                          h-8
-                          w-8
-                          items-center
-                          justify-center
-                          rounded-lg
-                          text-neutral-600
-                          transition
-                          hover:bg-red-500/10
-                          hover:text-red-400
-                          disabled:cursor-not-allowed
-                          disabled:opacity-50
-                        "
-                        title="Hapus"
-                      >
-
-                        {deletingId ===
-                        audioItem.id ? (
-
-                          <Loader2
-                            size={15}
-                            className="
-                              animate-spin
-                            "
-                          />
-
-                        ) : (
-
-                          <Trash2
-                            size={15}
-                          />
-
-                        )}
-
-                      </button>
-
+                          {/* Progress Bar Track - Strictly Read-Only */}
+                          <div className="h-2 w-full overflow-hidden rounded-full border border-neutral-800/80 bg-neutral-950 shadow-inner">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-orange-600 via-orange-500 to-amber-400 transition-all duration-200"
+                              style={{
+                                width: `${playbackProgress.percentage}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 }

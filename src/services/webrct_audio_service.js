@@ -75,14 +75,29 @@ class WebRTCAudioService {
         // ========================================================
 
         this.onStateChange = null;
+        this.onProgress = null;
     }
 
     // ============================================================
-    // STATE LISTENER
+    // STATE & PROGRESS LISTENERS
     // ============================================================
 
     setStateListener(callback) {
         this.onStateChange = callback;
+    }
+
+    setProgressCallback(callback) {
+        this.onProgress = callback;
+    }
+
+    getPlaybackProgress() {
+        if (!this.monitorAudioElement) {
+            return { currentTime: 0, duration: 0, percentage: 0 };
+        }
+        const currentTime = this.monitorAudioElement.currentTime || 0;
+        const duration = this.monitorAudioElement.duration || 0;
+        const percentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+        return { currentTime, duration, percentage };
     }
 
     // ============================================================
@@ -346,6 +361,22 @@ class WebRTCAudioService {
 
             this.monitorAudioElement.crossOrigin = "anonymous";
             this.monitorAudioElement.preload = "auto";
+
+            this.monitorAudioElement.ontimeupdate = () => {
+                if (this.onProgress && this.monitorAudioElement) {
+                    const currentTime = this.monitorAudioElement.currentTime || 0;
+                    const duration = this.monitorAudioElement.duration || 0;
+                    this.onProgress({ currentTime, duration });
+                }
+            };
+
+            this.monitorAudioElement.onloadedmetadata = () => {
+                if (this.onProgress && this.monitorAudioElement) {
+                    const currentTime = this.monitorAudioElement.currentTime || 0;
+                    const duration = this.monitorAudioElement.duration || 0;
+                    this.onProgress({ currentTime, duration });
+                }
+            };
 
             this.monitorAudioElement.onended = async () => {
                 // Pastikan audio benar-benar sudah mencapai akhir file (bukan buffer stall prematur)

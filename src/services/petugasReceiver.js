@@ -66,12 +66,42 @@ class PetugasReceiver {
       this.audioElement.muted = false;
       this.audioElement.volume = this.currentVolume;
 
-      // Event listener pasti: HANYA beralih ke live ketika audio benar-benar bersuara/berputar
+      // Event listener: HANYA beralih ke live ketika audio benar-benar bersuara/berputar
       this.audioElement.onplaying = () => {
         console.log("🔊 <audio> ONPLAYING: Audio benar-benar bersuara di speaker! -> Beralih ke layar LIVE");
+        
+        // Daftarkan ke MediaSession browser agar audio tetap berjalan di background / lock screen
+        if ("mediaSession" in navigator) {
+          try {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: "Siaran Radio Suka Shawarma",
+              artist: "Operator Pusat",
+              album: "Live Audio Streaming",
+            });
+            navigator.mediaSession.playbackState = "playing";
+            navigator.mediaSession.setActionHandler("play", () => {
+              if (this.audioElement) this.audioElement.play().catch(() => {});
+            });
+          } catch (e) {
+            console.warn("MediaSession error:", e);
+          }
+        }
+
         if (this.onAudioConnected && this.currentBroadcast) {
           this.onAudioConnected(this.currentBroadcast);
         }
+      };
+
+      this.audioElement.onpause = () => {
+        if ("mediaSession" in navigator) {
+          try {
+            navigator.mediaSession.playbackState = "paused";
+          } catch (e) {}
+        }
+      };
+
+      this.audioElement.onerror = (e) => {
+        console.warn("⚠️ Audio playback error:", this.audioElement?.error);
       };
     }
     if (!this.audioContext) {
@@ -279,7 +309,27 @@ class PetugasReceiver {
 
   // Handler saat siaran berakhir
   handleBroadcastEnded(data) {
-    console.log("Siaran berakhir, kembali ke standby");
+    const endRoomId = data?.rtc_room_id || data?.room_id;
+    const endBroadcastId = data?.broadcast_id || data?.id;
+
+    // Jika sedang memutar siaran aktif dan event end membawa room_id / broadcast_id:
+    // Pastikan event end ini ditujukan untuk siaran yang SEDANG AKTIF.
+    // Jika untuk room/broadcast lama yang sudah lewat, ABAIKAN agar audio saat ini tidak mati tiba-tiba!
+    if (this.currentBroadcast && (endRoomId || endBroadcastId)) {
+      const currentRoomId = this.currentBroadcast.rtc_room_id || this.currentBroadcast.room_id || this.currentRoomId;
+      const currentBcId = this.currentBroadcast.broadcast_id || this.currentBroadcast.id;
+
+      if (endRoomId && currentRoomId && String(endRoomId) !== String(currentRoomId)) {
+        console.log(`ℹ️ Event broadcast.ended untuk room lain (${endRoomId} != ${currentRoomId}), abaikan agar audio tidak terputus.`);
+        return;
+      }
+      if (endBroadcastId && currentBcId && String(endBroadcastId) !== String(currentBcId)) {
+        console.log(`ℹ️ Event broadcast.ended untuk broadcast lain (${endBroadcastId} != ${currentBcId}), abaikan agar audio tidak terputus.`);
+        return;
+      }
+    }
+
+    console.log("🛑 Siaran saat ini berakhir, kembali ke standby");
     this.cleanupAudioPlayback();
     this.clearReadyRetry();
     this.leaveRoomChannel();
@@ -288,6 +338,12 @@ class PetugasReceiver {
     this.currentBroadcast = null;
     this.currentRoomId = null;
     this.remoteStream = null;
+
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.playbackState = "none";
+      } catch (e) {}
+    }
 
     if (this.onBroadcastEnded) {
       this.onBroadcastEnded(data);

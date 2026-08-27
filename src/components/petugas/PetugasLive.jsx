@@ -177,8 +177,13 @@ export default function PetugasLive({
     }
   };
 
-  const isAudioFile = broadcastData?.type === "upload" || broadcastData?.audio?.url;
-  const broadcastTitle = isAudioFile
+  const isYouTube = broadcastData?.type === "youtube" || !!broadcastData?.youtube_id || (broadcastData?.rtc_room_id && broadcastData.rtc_room_id.startsWith("yt-"));
+  const youtubeVideoId = broadcastData?.youtube_id || (broadcastData?.rtc_room_id ? broadcastData.rtc_room_id.replace(/^yt-/, "").split("-")[0] : null);
+
+  const isAudioFile = !isYouTube && (broadcastData?.type === "upload" || broadcastData?.audio?.url);
+  const broadcastTitle = isYouTube
+    ? "Siaran Video YouTube Pusat"
+    : isAudioFile
     ? broadcastData?.audio?.name || "Pemutaran File Audio Pusat"
     : "Operator Pusat Berbicara (Live Mic)";
 
@@ -194,7 +199,7 @@ export default function PetugasLive({
             <div className="text-xs font-bold text-white">{outlet?.name || "Outlet"}</div>
             <div className="text-[11px] text-red-400 flex items-center gap-1 font-bold">
               <span className="h-2 w-2 rounded-full bg-red-500 animate-ping"></span>
-              LIVE STREAMING AUDIO
+              {isYouTube ? "SIARAN YOUTUBE LIVE" : "LIVE STREAMING AUDIO"}
             </div>
           </div>
         </div>
@@ -221,44 +226,59 @@ export default function PetugasLive({
             <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500"></span>
           </span>
           <span className="text-xs font-extrabold tracking-wider uppercase">
-            SEDANG LIVE SIARAN DARI PUSAT
+            {isYouTube ? "SEDANG MEMUTAR VIDEO YOUTUBE DARI PUSAT" : "SEDANG LIVE SIARAN DARI PUSAT"}
           </span>
         </div>
 
-        {/* Banner Klik untuk Putar jika dicegah browser */}
-        {needsUserClick && (
-          <button
-            onClick={resumeAudioPlay}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500/20 border border-amber-500/50 p-2.5 text-xs font-bold text-amber-300 animate-pulse hover:bg-amber-500/30 transition-all"
-          >
-            <Play className="h-4 w-4" />
-            <span>Klik di sini untuk Memutar Suara Speaker</span>
-          </button>
-        )}
-
-        {/* Waveform Visualizer Canvas */}
-        <div className="mt-4 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/80 p-4">
-          <canvas
-            ref={canvasRef}
-            className="h-24 w-full block cursor-pointer"
-            onClick={resumeAudioPlay}
-          />
-
-          <div className="mt-3 flex items-center justify-between border-t border-neutral-800/80 pt-3 text-xs text-neutral-400">
-            <div className="flex items-center gap-1.5 text-orange-400 font-semibold truncate max-w-[200px]">
-              {isAudioFile ? (
-                <Music className="h-3.5 w-3.5 animate-pulse text-amber-400" />
-              ) : (
-                <Mic className="h-3.5 w-3.5 animate-bounce text-red-400" />
-              )}
-              <span className="truncate">{broadcastTitle}</span>
-            </div>
-            <div className="flex items-center gap-1 font-mono text-neutral-300 font-bold shrink-0">
-              <Clock className="h-3.5 w-3.5 text-neutral-500" />
-              <span>{formatTime(seconds)}</span>
-            </div>
+        {/* YouTube Video Player jika siaran bertipe YouTube */}
+        {isYouTube && youtubeVideoId ? (
+          <div className="mt-4 overflow-hidden rounded-xl border border-neutral-800 bg-black aspect-video shadow-2xl">
+            <iframe
+              src={`https://www.youtube.com/embed/${youtubeVideoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&start=${Math.max(0, seconds)}`}
+              title="YouTube Live Broadcast"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              className="h-full w-full border-0"
+            />
           </div>
-        </div>
+        ) : (
+          <>
+            {/* Banner Klik untuk Putar jika dicegah browser */}
+            {needsUserClick && (
+              <button
+                onClick={resumeAudioPlay}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500/20 border border-amber-500/50 p-2.5 text-xs font-bold text-amber-300 animate-pulse hover:bg-amber-500/30 transition-all"
+              >
+                <Play className="h-4 w-4" />
+                <span>Klik di sini untuk Memutar Suara Speaker</span>
+              </button>
+            )}
+
+            {/* Waveform Visualizer Canvas */}
+            <div className="mt-4 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/80 p-4">
+              <canvas
+                ref={canvasRef}
+                className="h-24 w-full block cursor-pointer"
+                onClick={resumeAudioPlay}
+              />
+
+              <div className="mt-3 flex items-center justify-between border-t border-neutral-800/80 pt-3 text-xs text-neutral-400">
+                <div className="flex items-center gap-1.5 text-orange-400 font-semibold truncate max-w-[200px]">
+                  {isAudioFile ? (
+                    <Music className="h-3.5 w-3.5 animate-pulse text-amber-400" />
+                  ) : (
+                    <Mic className="h-3.5 w-3.5 animate-bounce text-red-400" />
+                  )}
+                  <span className="truncate">{broadcastTitle}</span>
+                </div>
+                <div className="flex items-center gap-1 font-mono text-neutral-300 font-bold shrink-0">
+                  <Clock className="h-3.5 w-3.5 text-neutral-500" />
+                  <span>{formatTime(seconds)}</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Live Channel Info */}
         <div className="mt-4 grid grid-cols-2 gap-2.5 text-xs">

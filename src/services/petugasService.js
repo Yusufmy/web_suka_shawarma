@@ -156,16 +156,17 @@ export const petugasService = {
   },
 
   // 7. Sinyal Receiver Ready ke Operator
-  async sendReceiverReady({ roomId, outletId }) {
+  async sendReceiverReady({ roomId, outletId, deviceId }) {
     const client = getClient();
     return client.post("/webrtc/ready", {
       room_id: roomId,
       outlet_id: outletId,
+      device_id: deviceId || getOrCreateDeviceId(),
     });
   },
 
   // 8. Kirim WebRTC Answer ke Operator
-  async sendAnswer({ roomId, outletId, sdp }) {
+  async sendAnswer({ roomId, outletId, deviceId, sdp }) {
     const client = getClient();
     return client.post("/webrtc/answer", {
       room_id: roomId,
@@ -174,16 +175,18 @@ export const petugasService = {
         sdp: sdp,
       },
       outlet_id: outletId,
+      device_id: deviceId || getOrCreateDeviceId(),
     });
   },
 
   // 9. Kirim ICE candidate ke Operator
-  async sendIceCandidate({ roomId, outletId, candidate }) {
+  async sendIceCandidate({ roomId, outletId, deviceId, candidate }) {
     const client = getClient();
     return client.post("/webrtc/ice", {
       room_id: roomId,
       candidate: candidate,
       outlet_id: outletId,
+      device_id: deviceId || getOrCreateDeviceId(),
     });
   },
 };

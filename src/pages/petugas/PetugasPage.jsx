@@ -61,6 +61,7 @@ export default function PetugasPage() {
     if (audioRef.current) {
       audioRef.current.volume = volume;
     }
+    petugasReceiver.setVolume(volume);
   }, [volume]);
 
   // Init Receiver & Audio Element

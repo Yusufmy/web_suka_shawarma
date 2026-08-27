@@ -1,5 +1,5 @@
 import echo from "../websocket/echo";
-import petugasService from "./petugasService";
+import petugasService, { getOrCreateDeviceId } from "./petugasService";
 
 class PetugasReceiver {
   constructor() {
@@ -14,6 +14,8 @@ class PetugasReceiver {
     this.audioContext = null;
     this.analyser = null;
     this.dataArray = null;
+    this.currentAudioSource = null;
+    this.currentVolume = 0.8;
     this.pendingRemoteIce = [];
     this.readyRetryTimer = null;
     this.remoteStream = null;
@@ -26,11 +28,43 @@ class PetugasReceiver {
     this.isListening = false;
   }
 
+  // Update volume
+  setVolume(vol) {
+    this.currentVolume = vol;
+    if (this.audioElement) {
+      this.audioElement.volume = vol;
+    }
+  }
+
+  // Bersihkan pemutaran audio sebelumnya secara total agar tidak terjadi tumpang tindih suara
+  cleanupAudioPlayback() {
+    if (this.audioElement) {
+      try {
+        this.audioElement.pause();
+        this.audioElement.currentTime = 0;
+        this.audioElement.removeAttribute("src");
+        this.audioElement.src = "";
+        this.audioElement.srcObject = null;
+        this.audioElement.onended = null;
+      } catch (e) {
+        console.warn("Audio element cleanup error:", e);
+      }
+    }
+
+    if (this.currentAudioSource) {
+      try {
+        this.currentAudioSource.disconnect();
+      } catch (e) {}
+      this.currentAudioSource = null;
+    }
+  }
+
   // Inisialisasi audio element & audio context
   initAudio(audioEl) {
     this.audioElement = audioEl;
     if (this.audioElement) {
       this.audioElement.muted = false;
+      this.audioElement.volume = this.currentVolume;
     }
     if (!this.audioContext) {
       try {
@@ -68,12 +102,7 @@ class PetugasReceiver {
     this.clearReadyRetry();
     this.leaveRoomChannel();
     this.closePeerConnection();
-
-    if (this.audioElement) {
-      this.audioElement.pause();
-      this.audioElement.src = "";
-      this.audioElement.srcObject = null;
-    }
+    this.cleanupAudioPlayback();
 
     if (echo && this.isListening) {
       echo.leaveChannel("outlets");
@@ -188,6 +217,11 @@ class PetugasReceiver {
       return;
     }
 
+    // Bersihkan audio sebelumnya (termasuk file MP3 lama) agar tidak bentrok atau bertumpuk
+    this.cleanupAudioPlayback();
+    this.closePeerConnection();
+    this.clearReadyRetry();
+
     this.currentBroadcast = data;
     
     // Beritahu UI untuk LANGSUNG beralih ke layar LIVE seketika
@@ -208,6 +242,11 @@ class PetugasReceiver {
   handleAudioBroadcastStarted(data) {
     if (!this.isTargeted(data)) return;
 
+    // Bersihkan audio & WebRTC sebelumnya agar tidak terjadi dobel audio
+    this.cleanupAudioPlayback();
+    this.closePeerConnection();
+    this.clearReadyRetry();
+
     this.currentBroadcast = data;
 
     // Beritahu UI untuk LANGSUNG beralih ke layar LIVE seketika
@@ -221,8 +260,15 @@ class PetugasReceiver {
     if (data.audio?.url && this.audioElement) {
       this.audioElement.srcObject = null;
       this.audioElement.src = data.audio.url;
-      this.audioElement.volume = 1.0;
+      this.audioElement.volume = this.currentVolume;
       this.audioElement.muted = false;
+      this.audioElement.loop = false; // JANGAN looping
+
+      this.audioElement.onended = () => {
+        console.log("⏹️ Audio file selesai diputar");
+        this.handleBroadcastEnded({ room_id: data.rtc_room_id || data.room_id });
+      };
+
       this.audioElement.play().catch((err) => {
         console.warn("Autoplay audio file terblokir:", err);
       });
@@ -232,17 +278,15 @@ class PetugasReceiver {
   // Handler saat siaran berakhir
   handleBroadcastEnded(data) {
     console.log("Siaran berakhir, kembali ke standby");
+    this.cleanupAudioPlayback();
     this.clearReadyRetry();
     this.leaveRoomChannel();
     this.closePeerConnection();
 
-    if (this.audioElement) {
-      this.audioElement.pause();
-      this.audioElement.src = "";
-      this.audioElement.srcObject = null;
-    }
-
     this.currentBroadcast = null;
+    this.currentRoomId = null;
+    this.remoteStream = null;
+
     if (this.onBroadcastEnded) {
       this.onBroadcastEnded(data);
     }
@@ -267,6 +311,7 @@ class PetugasReceiver {
     this.pendingRemoteIce = [];
 
     const outletId = parseInt(this.outlet?.id, 10);
+    const myDeviceId = getOrCreateDeviceId();
 
     // 1. Setup PeerConnection
     await this.setupPeerConnection(roomId, broadcastId);
@@ -287,16 +332,25 @@ class PetugasReceiver {
         return;
       }
 
+      // Filter device_id jika ada pada Offer
+      if (offerData.device_id && offerData.device_id !== myDeviceId) {
+        console.log(`Offer untuk device lain (${offerData.device_id}), abaikan di device ini (${myDeviceId})`);
+        return;
+      }
+
       this.clearReadyRetry();
       await this.handleWebRTCOffer(offerData, roomId, broadcastId);
     };
 
     const onIceReceived = (iceData) => {
-      console.log("🧊 Menerima Operator ICE:", iceData);
       const targetOutletId = iceData.outlet_id ? parseInt(iceData.outlet_id, 10) : null;
       if (targetOutletId && targetOutletId !== outletId) {
         return;
       }
+      if (iceData.device_id && iceData.device_id !== myDeviceId) {
+        return;
+      }
+      console.log("🧊 Menerima Operator ICE:", iceData);
       this.handleOperatorIce(iceData);
     };
 
@@ -313,10 +367,11 @@ class PetugasReceiver {
     // 3. FUNGSI UNTUK KIRIM SINYAL RECEIVER READY
     const sendReadySignal = async () => {
       try {
-        console.log(`📤 Mengirim sinyal receiver ready (Room: ${roomId}, Outlet: ${outletId})...`);
+        console.log(`📤 Mengirim sinyal receiver ready (Room: ${roomId}, Outlet: ${outletId}, Device: ${myDeviceId})...`);
         await petugasService.sendReceiverReady({
           roomId,
           outletId,
+          deviceId: myDeviceId,
         });
       } catch (e) {
         console.error("Gagal mengirim receiver ready:", e);
@@ -335,7 +390,7 @@ class PetugasReceiver {
 
     this.readyRetryTimer = setInterval(async () => {
       retryCount++;
-      if (retryCount > 4 || (this.peerConnection && this.peerConnection.remoteDescription)) {
+      if (retryCount > 6 || (this.peerConnection && this.peerConnection.remoteDescription)) {
         this.clearReadyRetry();
         return;
       }
@@ -366,8 +421,12 @@ class PetugasReceiver {
       this.remoteStream = stream;
 
       if (this.audioElement) {
+        this.audioElement.pause();
+        this.audioElement.removeAttribute("src");
+        this.audioElement.src = "";
         this.audioElement.srcObject = this.remoteStream;
         this.audioElement.muted = false;
+        this.audioElement.volume = this.currentVolume;
 
         const playPromise = this.audioElement.play();
         if (playPromise !== undefined) {
@@ -381,16 +440,18 @@ class PetugasReceiver {
         }
       }
 
-      // Hubungkan ke Web Audio API Analyser untuk visualizer gelombang suara & output speaker
+      // Hubungkan ke Web Audio API Analyser HANYA untuk visualizer gelombang suara (TIDAK ke destination agar tidak echo/patah-patah)
       if (this.audioContext && this.analyser) {
         try {
           if (this.audioContext.state === "suspended") {
-            this.audioContext.resume();
+            this.audioContext.resume().catch(() => {});
           }
-          const source = this.audioContext.createMediaStreamSource(this.remoteStream);
-          source.connect(this.analyser);
-          this.analyser.connect(this.audioContext.destination);
-          console.log("📊 Analyser berhasil tersambung ke stream & audio destination");
+          if (this.currentAudioSource) {
+            try { this.currentAudioSource.disconnect(); } catch(e){}
+          }
+          this.currentAudioSource = this.audioContext.createMediaStreamSource(this.remoteStream);
+          this.currentAudioSource.connect(this.analyser);
+          console.log("📊 Analyser berhasil tersambung ke stream visualizer (bersih tanpa echo)");
         } catch (err) {
           console.warn("Analyser connection error:", err);
         }
@@ -409,6 +470,7 @@ class PetugasReceiver {
         petugasService.sendIceCandidate({
           roomId,
           outletId,
+          deviceId: myDeviceId,
           candidate: {
             candidate: event.candidate.candidate,
             sdpMid: event.candidate.sdpMid,
@@ -442,6 +504,7 @@ class PetugasReceiver {
 
     try {
       const outletId = parseInt(this.outlet?.id, 10);
+      const myDeviceId = getOrCreateDeviceId();
       const rawOffer = offerData.offer || offerData;
 
       if (!rawOffer || !rawOffer.sdp) {
@@ -494,10 +557,11 @@ class PetugasReceiver {
         .filter((line) => line.length > 0)
         .join("\r\n") + "\r\n";
 
-      console.log(`📤 Mengirim WebRTC Answer ke Operator (Room: ${roomId}, Outlet: ${outletId})...`);
+      console.log(`📤 Mengirim WebRTC Answer ke Operator (Room: ${roomId}, Outlet: ${outletId}, Device: ${myDeviceId})...`);
       const res = await petugasService.sendAnswer({
         roomId,
         outletId,
+        deviceId: myDeviceId,
         sdp: cleanAnswerSdp,
       });
 

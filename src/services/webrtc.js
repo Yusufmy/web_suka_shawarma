@@ -177,19 +177,45 @@ class WebRTCService {
     }
 
     // ============================================================
+    // ============================================================
+    // HELPER: PEER KEY & PEER CONNECTION
+    // ============================================================
+
+    getPeerKey(outletId, deviceId = null) {
+        const id = Number(outletId);
+        return deviceId ? `${id}_${deviceId}` : `${id}`;
+    }
+
+    getPeerConnection(outletId, deviceId = null) {
+        const id = Number(outletId);
+        if (deviceId) {
+            const key = `${id}_${deviceId}`;
+            if (this.peerConnections.has(key)) {
+                return this.peerConnections.get(key);
+            }
+        }
+        return (
+            this.peerConnections.get(id) ||
+            this.peerConnections.get(String(outletId)) ||
+            null
+        );
+    }
+
+    // ============================================================
     // OUTLET READY → BUAT PEER CONNECTION + KIRIM OFFER
     //
     // Dipanggil tiap kali ada outlet yang mengirim sinyal
-    // webrtc.receiver.ready dengan outlet_id tertentu.
+    // webrtc.receiver.ready dengan outlet_id dan device_id tertentu.
     // ============================================================
 
-    async handleOutletReady(outletId) {
+    async handleOutletReady(outletId, deviceId = null) {
         const id = Number(outletId);
+        const peerKey = this.getPeerKey(outletId, deviceId);
 
         if (!this.localStream || !this.roomId) {
             console.warn(
-                "⚠️ Mic/room belum siap, abaikan ready outlet:",
-                outletId
+                "⚠️ Mic/room belum siap, abaikan ready peer:",
+                peerKey
             );
 
             return;
@@ -208,30 +234,51 @@ class WebRTCService {
             return;
         }
 
-        if (this.peerConnections.has(id) || this.peerConnections.has(String(outletId))) {
-            console.warn(
-                "⚠️ Outlet sudah punya PeerConnection, abaikan ready ulang:",
-                outletId
+        // Jika peer ini mengirim sinyal ready baru (misal karena refresh halaman atau reconnect),
+        // tutup koneksi PeerConnection lama dan buatkan Offer baru yang fresh!
+        if (this.peerConnections.has(peerKey) || (!deviceId && (this.peerConnections.has(id) || this.peerConnections.has(String(outletId))))) {
+            const oldPc = this.peerConnections.get(peerKey) || this.peerConnections.get(id) || this.peerConnections.get(String(outletId));
+            console.log(
+                `🔄 Peer ${peerKey} mengirim sinyal ready baru (refresh/reconnect, state: ${oldPc?.connectionState}). Mereset koneksi lama & membuat Offer baru...`
             );
+            if (oldPc) {
+                try {
+                    oldPc.onicecandidate = null;
+                    oldPc.onconnectionstatechange = null;
+                    oldPc.oniceconnectionstatechange = null;
+                    oldPc.close();
+                } catch (e) {
+                    console.warn(e);
+                }
+            }
+            this.peerConnections.delete(peerKey);
+            this.pendingRemoteIce.delete(peerKey);
+            this.creatingOfferFor.delete(peerKey);
 
-            return;
+            if (!deviceId) {
+                this.peerConnections.delete(id);
+                this.peerConnections.delete(String(outletId));
+                this.pendingRemoteIce.delete(id);
+                this.pendingRemoteIce.delete(String(outletId));
+                this.creatingOfferFor.delete(id);
+                this.creatingOfferFor.delete(String(outletId));
+            }
         }
 
-        if (this.creatingOfferFor.get(id) || this.creatingOfferFor.get(String(outletId))) {
+        if (this.creatingOfferFor.get(peerKey)) {
             console.warn(
-                "⚠️ Offer sedang dibuat untuk outlet ini, skip:",
-                outletId
+                "⚠️ Offer sedang dibuat untuk peer ini, skip:",
+                peerKey
             );
 
             return;
         }
 
         try {
-            this.creatingOfferFor.set(id, true);
-            this.creatingOfferFor.set(String(outletId), true);
+            this.creatingOfferFor.set(peerKey, true);
 
             console.log("====================================");
-            console.log("🔗 CONNECTING OUTLET:", outletId);
+            console.log("🔗 CONNECTING PEER:", peerKey);
             console.log("====================================");
 
             // ------------------------------------------------------
@@ -245,11 +292,17 @@ class WebRTCService {
                         DEFAULT_ICE_SERVERS,
                 });
 
-            this.peerConnections.set(id, peerConnection);
-            this.peerConnections.set(String(outletId), peerConnection);
+            this.peerConnections.set(peerKey, peerConnection);
+            if (!deviceId) {
+                this.peerConnections.set(id, peerConnection);
+                this.peerConnections.set(String(outletId), peerConnection);
+            }
 
-            this.pendingRemoteIce.set(id, []);
-            this.pendingRemoteIce.set(String(outletId), []);
+            this.pendingRemoteIce.set(peerKey, []);
+            if (!deviceId) {
+                this.pendingRemoteIce.set(id, []);
+                this.pendingRemoteIce.set(String(outletId), []);
+            }
 
             // ------------------------------------------------------
             // ADD MICROPHONE TRACK (stream yang sama dipakai
@@ -267,7 +320,7 @@ class WebRTCService {
                 });
 
             console.log(
-                `✅ Audio track added → outlet ${outletId}`
+                `✅ Audio track added → peer ${peerKey}`
             );
 
             // ------------------------------------------------------
@@ -279,7 +332,7 @@ class WebRTCService {
                     try {
                         if (!event.candidate) {
                             console.log(
-                                `🧊 ICE gathering completed: outlet ${outletId}`
+                                `🧊 ICE gathering completed: peer ${peerKey}`
                             );
 
                             return;
@@ -287,7 +340,8 @@ class WebRTCService {
 
                         await this.sendIceCandidate(
                             outletId,
-                            event.candidate
+                            event.candidate,
+                            deviceId
                         );
                     } catch (error) {
                         console.error(
@@ -300,7 +354,7 @@ class WebRTCService {
             peerConnection.onicecandidateerror =
                 (event) => {
                     console.error(
-                        `❌ ICE CANDIDATE ERROR (outlet ${outletId}):`,
+                        `❌ ICE CANDIDATE ERROR (peer ${peerKey}):`,
                         {
                             errorCode: event.errorCode,
                             errorText: event.errorText,
@@ -318,13 +372,14 @@ class WebRTCService {
                         peerConnection.connectionState;
 
                     console.log(
-                        `🔗 Outlet ${outletId} state:`,
+                        `🔗 Peer ${peerKey} state:`,
                         state
                     );
 
                     if (this.onConnectionStateChange) {
                         this.onConnectionStateChange({
                             outletId,
+                            deviceId,
                             state,
                         });
                     }
@@ -333,7 +388,7 @@ class WebRTCService {
             peerConnection.oniceconnectionstatechange =
                 () => {
                     console.log(
-                        `🧊 Outlet ${outletId} ICE:`,
+                        `🧊 Peer ${peerKey} ICE:`,
                         peerConnection.iceConnectionState
                     );
                 };
@@ -348,7 +403,7 @@ class WebRTCService {
             await peerConnection.setLocalDescription(offer);
 
             console.log(
-                `📦 Offer created for outlet ${outletId}`
+                `📦 Offer created for peer ${peerKey}`
             );
 
             // ------------------------------------------------------
@@ -359,7 +414,8 @@ class WebRTCService {
                 `${API_URL}/webrtc/offer`,
                 {
                     room_id: this.roomId,
-                    outlet_id: outletId,
+                    outlet_id: id,
+                    device_id: deviceId,
                     offer: {
                         type: peerConnection.localDescription.type,
                         sdp: peerConnection.localDescription.sdp,
@@ -368,17 +424,22 @@ class WebRTCService {
             );
 
             console.log(
-                `✅ OFFER sent → outlet ${outletId}`
+                `✅ OFFER sent → peer ${peerKey}`
             );
         } catch (error) {
             console.error(
-                `❌ FAILED CONNECTING OUTLET ${outletId}:`,
+                `❌ FAILED CONNECTING PEER ${peerKey}:`,
                 error
             );
 
-            this.stopPeerConnection(outletId);
+            this.stopPeerConnection(outletId, deviceId);
         } finally {
-            this.creatingOfferFor.delete(outletId);
+            this.creatingOfferFor.delete(peerKey);
+            if (!deviceId) {
+                this.creatingOfferFor.delete(id);
+                this.creatingOfferFor.delete(String(outletId));
+                this.creatingOfferFor.delete(outletId);
+            }
         }
     }
 
@@ -386,7 +447,7 @@ class WebRTCService {
     // SEND ICE CANDIDATE (operator → outlet)
     // ============================================================
 
-    async sendIceCandidate(outletId, candidate) {
+    async sendIceCandidate(outletId, candidate, deviceId = null) {
         try {
             if (!this.roomId) {
                 console.warn(
@@ -404,7 +465,8 @@ class WebRTCService {
                 `${API_URL}/webrtc/operator-ice`,
                 {
                     room_id: this.roomId,
-                    outlet_id: outletId,
+                    outlet_id: Number(outletId),
+                    device_id: deviceId,
                     candidate: {
                         candidate: candidate.candidate,
                         sdpMid: candidate.sdpMid,
@@ -414,7 +476,7 @@ class WebRTCService {
             );
 
             console.log(
-                `🧊 Operator ICE sent → outlet ${outletId}`
+                `🧊 Operator ICE sent → outlet ${outletId} (device: ${deviceId || "all"})`
             );
         } catch (error) {
             console.error(
@@ -430,18 +492,15 @@ class WebRTCService {
     // HANDLE ANSWER FROM OUTLET
     // ============================================================
 
-    async handleAnswer(outletId, answer) {
+    async handleAnswer(outletId, answer, deviceId = null) {
         try {
-            const id = Number(outletId);
-            const peerConnection =
-                this.peerConnections.get(id) ||
-                this.peerConnections.get(String(outletId)) ||
-                this.peerConnections.get(outletId);
+            const peerKey = this.getPeerKey(outletId, deviceId);
+            const peerConnection = this.getPeerConnection(outletId, deviceId);
 
             if (!peerConnection) {
                 console.warn(
-                    "⚠️ PeerConnection tidak ditemukan untuk outlet:",
-                    outletId
+                    "⚠️ PeerConnection tidak ditemukan untuk peer:",
+                    peerKey
                 );
 
                 return;
@@ -457,7 +516,7 @@ class WebRTCService {
             }
 
             console.log(
-                `📥 ANSWER received ← outlet ${outletId}`
+                `📥 ANSWER received ← peer ${peerKey}`
             );
 
             // ----------------------------------------------------
@@ -486,13 +545,13 @@ class WebRTCService {
             );
 
             console.log(
-                `✅ Remote description set → outlet ${outletId}`
+                `✅ Remote description set → peer ${peerKey}`
             );
 
-            await this.flushPendingRemoteIce(outletId);
+            await this.flushPendingRemoteIce(outletId, deviceId);
         } catch (error) {
             console.error(
-                `❌ FAILED HANDLING ANSWER (outlet ${outletId}):`,
+                `❌ FAILED HANDLING ANSWER (peer ${this.getPeerKey(outletId, deviceId)}):`,
                 error
             );
         }
@@ -502,18 +561,15 @@ class WebRTCService {
     // HANDLE REMOTE ICE FROM OUTLET
     // ============================================================
 
-    async handleIceCandidate(outletId, candidate) {
+    async handleIceCandidate(outletId, candidate, deviceId = null) {
         try {
-            const id = Number(outletId);
-            const peerConnection =
-                this.peerConnections.get(id) ||
-                this.peerConnections.get(String(outletId)) ||
-                this.peerConnections.get(outletId);
+            const peerKey = this.getPeerKey(outletId, deviceId);
+            const peerConnection = this.getPeerConnection(outletId, deviceId);
 
             if (!peerConnection) {
                 console.warn(
-                    "⚠️ PeerConnection tidak ditemukan untuk outlet:",
-                    outletId
+                    "⚠️ PeerConnection tidak ditemukan untuk peer:",
+                    peerKey
                 );
 
                 return;
@@ -522,7 +578,7 @@ class WebRTCService {
             if (!candidate || !candidate.candidate) {
                 console.warn(
                     "⚠️ Remote ICE candidate kosong:",
-                    outletId
+                    peerKey
                 );
 
                 return;
@@ -530,16 +586,16 @@ class WebRTCService {
 
             if (!peerConnection.remoteDescription) {
                 console.log(
-                    `⏳ Remote description belum ada, simpan ICE outlet ${outletId}`
+                    `⏳ Remote description belum ada, simpan ICE peer ${peerKey}`
                 );
 
                 const pending =
-                    this.pendingRemoteIce.get(outletId) || [];
+                    this.pendingRemoteIce.get(peerKey) || [];
 
                 pending.push(candidate);
 
                 this.pendingRemoteIce.set(
-                    outletId,
+                    peerKey,
                     pending
                 );
 
@@ -555,11 +611,11 @@ class WebRTCService {
             );
 
             console.log(
-                `✅ Remote ICE added → outlet ${outletId}`
+                `✅ Remote ICE added → peer ${peerKey}`
             );
         } catch (error) {
             console.error(
-                `❌ Failed adding remote ICE (outlet ${outletId}):`,
+                `❌ Failed adding remote ICE (peer ${this.getPeerKey(outletId, deviceId)}):`,
                 error
             );
         }
@@ -569,21 +625,17 @@ class WebRTCService {
     // FLUSH PENDING REMOTE ICE
     // ============================================================
 
-    async flushPendingRemoteIce(outletId) {
-        const id = Number(outletId);
-        const peerConnection =
-            this.peerConnections.get(id) ||
-            this.peerConnections.get(String(outletId)) ||
-            this.peerConnections.get(outletId);
+    async flushPendingRemoteIce(outletId, deviceId = null) {
+        const peerKey = this.getPeerKey(outletId, deviceId);
+        const peerConnection = this.getPeerConnection(outletId, deviceId);
 
         if (!peerConnection) {
             return;
         }
 
         const pending =
-            this.pendingRemoteIce.get(id) ||
-            this.pendingRemoteIce.get(String(outletId)) ||
-            this.pendingRemoteIce.get(outletId) ||
+            this.pendingRemoteIce.get(peerKey) ||
+            (!deviceId ? (this.pendingRemoteIce.get(Number(outletId)) || this.pendingRemoteIce.get(String(outletId))) : null) ||
             [];
 
         if (pending.length === 0) {
@@ -591,11 +643,10 @@ class WebRTCService {
         }
 
         console.log(
-            `🧊 Flushing ${pending.length} remote ICE → outlet ${outletId}`
+            `🧊 Flushing ${pending.length} remote ICE → peer ${peerKey}`
         );
 
-        this.pendingRemoteIce.set(id, []);
-        this.pendingRemoteIce.set(String(outletId), []);
+        this.pendingRemoteIce.set(peerKey, []);
 
         for (const candidate of pending) {
             try {
@@ -608,7 +659,7 @@ class WebRTCService {
                 );
             } catch (error) {
                 console.error(
-                    `❌ Failed pending remote ICE (outlet ${outletId}):`,
+                    `❌ Failed pending remote ICE (peer ${peerKey}):`,
                     error
                 );
             }
@@ -624,11 +675,22 @@ class WebRTCService {
     }
 
     // ============================================================
-    // GET PEER CONNECTION
+    // GET PEER CONNECTION (backward compatible)
     // ============================================================
 
-    getPeerConnection(outletId) {
-        return this.peerConnections.get(outletId) || null;
+    getPeerConnection(outletId, deviceId = null) {
+        const id = Number(outletId);
+        if (deviceId) {
+            const key = `${id}_${deviceId}`;
+            if (this.peerConnections.has(key)) {
+                return this.peerConnections.get(key);
+            }
+        }
+        return (
+            this.peerConnections.get(id) ||
+            this.peerConnections.get(String(outletId)) ||
+            null
+        );
     }
 
     // ============================================================
@@ -651,19 +713,22 @@ class WebRTCService {
     }
 
     // ============================================================
-    // STOP SATU PEER CONNECTION (outlet tertentu)
+    // STOP SATU PEER CONNECTION (outlet/device tertentu)
     // ============================================================
 
-    stopPeerConnection(outletId) {
+    stopPeerConnection(outletId, deviceId = null) {
+        const peerKey = this.getPeerKey(outletId, deviceId);
+        const id = Number(outletId);
         const peerConnection =
-            this.peerConnections.get(outletId);
+            this.peerConnections.get(peerKey) ||
+            (!deviceId ? (this.peerConnections.get(id) || this.peerConnections.get(String(outletId))) : null);
 
         if (!peerConnection) {
             return;
         }
 
         console.log(
-            `🛑 Closing PeerConnection outlet ${outletId}...`
+            `🛑 Closing PeerConnection peer ${peerKey}...`
         );
 
         try {
@@ -679,8 +744,18 @@ class WebRTCService {
             );
         }
 
-        this.peerConnections.delete(outletId);
-        this.pendingRemoteIce.delete(outletId);
+        this.peerConnections.delete(peerKey);
+        this.pendingRemoteIce.delete(peerKey);
+        this.creatingOfferFor.delete(peerKey);
+
+        if (!deviceId) {
+            this.peerConnections.delete(id);
+            this.peerConnections.delete(String(outletId));
+            this.pendingRemoteIce.delete(id);
+            this.pendingRemoteIce.delete(String(outletId));
+            this.creatingOfferFor.delete(id);
+            this.creatingOfferFor.delete(String(outletId));
+        }
     }
 
     // ============================================================

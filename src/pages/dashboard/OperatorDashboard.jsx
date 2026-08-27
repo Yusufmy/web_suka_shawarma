@@ -122,20 +122,22 @@ export function useMicDevices() {
     return { devices, selectedDeviceId, selectDevice };
 }
 
-// Kirim OFFER ke satu outlet yang sudah kirim "receiver ready".
+// Kirim OFFER ke satu outlet/device yang sudah kirim "receiver ready".
 // Modul-level (bukan di dalam komponen) karena cuma menyentuh
 // singleton service "webrtc", tidak butuh state/props React apa pun -
 // dipakai baik dari listener event maupun dari drain antrian di
 // handleStart.
-async function sendOfferToReadyOutlet(outletId) {
-    console.log("✅ Flutter receiver valid, outlet:", outletId);
+async function sendOfferToReadyOutlet(outletId, deviceId = null) {
+    console.log("✅ Receiver valid, outlet:", outletId, "device:", deviceId);
 
     try {
-        await webrtc.handleOutletReady(outletId);
+        await webrtc.handleOutletReady(outletId, deviceId);
 
         console.log(
             "✅ OFFER berhasil dikirim ke outlet:",
-            outletId
+            outletId,
+            "device:",
+            deviceId
         );
     } catch (error) {
         console.error(
@@ -564,7 +566,8 @@ export default function OperatorDashboard() {
 
                 await webrtc.handleAnswer(
                     data.outlet_id,
-                    data.answer
+                    data.answer,
+                    data.device_id || null
                 );
             }
         );
@@ -599,7 +602,8 @@ export default function OperatorDashboard() {
 
                 await webrtc.handleIceCandidate(
                     data.outlet_id,
-                    data.candidate
+                    data.candidate,
+                    data.device_id || null
                 );
             }
         );
@@ -965,23 +969,23 @@ export default function OperatorDashboard() {
         // supaya OFFER tetap terkirim, bukan hilang begitu saja.
         // ============================================
 
-        const pendingOutletIds =
+        const pendingReadyList =
             pendingReceiverReadyRef.current.get(
                 broadcast.rtc_room_id
             );
 
-        if (pendingOutletIds && pendingOutletIds.size > 0) {
+        if (pendingReadyList && pendingReadyList.length > 0) {
             console.log(
                 "📨 Replay receiver.ready yang tertunda:",
-                Array.from(pendingOutletIds)
+                pendingReadyList
             );
 
             pendingReceiverReadyRef.current.delete(
                 broadcast.rtc_room_id
             );
 
-            for (const outletId of pendingOutletIds) {
-                await sendOfferToReadyOutlet(outletId);
+            for (const item of pendingReadyList) {
+                await sendOfferToReadyOutlet(item.outletId, item.deviceId);
             }
         }
 
@@ -1325,7 +1329,7 @@ export default function OperatorDashboard() {
 
       channel.listen(".webrtc.receiver.ready", async (data) => {
           console.log(
-              "🎉 Flutter receiver READY:",
+              "🎉 Receiver READY:",
               data
           );
 
@@ -1359,9 +1363,12 @@ export default function OperatorDashboard() {
               const pending =
                   pendingReceiverReadyRef.current.get(
                       data.room_id
-                  ) ?? new Set();
+                  ) ?? [];
 
-              pending.add(data.outlet_id);
+              pending.push({
+                  outletId: data.outlet_id,
+                  deviceId: data.device_id || null,
+              });
 
               pendingReceiverReadyRef.current.set(
                   data.room_id,
@@ -1371,7 +1378,7 @@ export default function OperatorDashboard() {
               return;
           }
 
-          await sendOfferToReadyOutlet(data.outlet_id);
+          await sendOfferToReadyOutlet(data.outlet_id, data.device_id || null);
       });
 
       channel.listen(".outlet.thumbs.up", (data) => {

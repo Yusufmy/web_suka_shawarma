@@ -16,7 +16,11 @@ export default function AppRoutes() {
         <BrowserRouter>
             <Routes>
 
-                {/* Web Listener / Petugas / Atasan */}
+                {/* Web Listener / Outlet / Petugas / Atasan */}
+                <Route
+                    path="/outlet"
+                    element={<PetugasPage />}
+                />
                 <Route
                     path="/petugas"
                     element={<PetugasPage />}

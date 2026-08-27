@@ -190,7 +190,7 @@ export default function PetugasPage() {
 
         {/* Footer */}
         <footer className="mt-8 text-center text-xs text-neutral-600">
-          Audio Suka Shawarma &copy; {new Date().getFullYear()} &bull; Web Monitor Mode
+          Audio Suka Shawarma &copy; {new Date().getFullYear()} &bull; Web Radio & Outlet Mode
         </footer>
       </div>
 

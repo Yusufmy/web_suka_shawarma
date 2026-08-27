@@ -113,13 +113,13 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-400 mb-2">
             <Radio className="h-3.5 w-3.5 animate-pulse" />
-            Web Audio Listener
+            Radio Outlet & Audio Listener
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight text-white">
             Audio <span className="text-orange-500">Suka Shawarma</span>
           </h1>
           <p className="mt-1 text-sm text-neutral-400">
-            Akses Web Khusus Monitoring & Petugas / Atasan
+            Akses Web Siaran Radio untuk Outlet & Petugas
           </p>
         </div>
       </div>
@@ -227,7 +227,7 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
               />
             </div>
             <p className="mt-1.5 text-xs text-neutral-500">
-              Masukkan nama outlet yang terdaftar di sistem.
+              Masukkan nama outlet yang terdaftar di sistem untuk mendengarkan siaran radio secara live.
             </p>
           </div>
 
@@ -244,7 +244,7 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
                 </div>
               ) : (
                 <>
-                  <span>Hubungkan & Buka Siaran</span>
+                  <span>Hubungkan & Buka Siaran Outlet</span>
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </>
               )}

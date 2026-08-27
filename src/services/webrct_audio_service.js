@@ -347,6 +347,16 @@ class WebRTCAudioService {
             this.monitorAudioElement.crossOrigin = "anonymous";
             this.monitorAudioElement.preload = "auto";
 
+            this.monitorAudioElement.onended = async () => {
+                console.log(
+                    "🏁 Audio monitor lokal selesai diputar (file audio habis). Mengakhiri broadcast..."
+                );
+                await this.stop({ silent: true, isNaturalEnd: true });
+                if (this.onStateChange) {
+                    this.onStateChange("ended");
+                }
+            };
+
             console.log(
                 "⏳ Menghubungkan semua outlet secara paralel..."
             );
@@ -942,10 +952,18 @@ class WebRTCAudioService {
         // SEMUA OUTLET SUDAH SELESAI/BERHENTI
         // ========================================================
 
-        if (this.roomId && this.peerConnections.size === 0) {
+        const isMonitorPlaying =
+            this.monitorAudioElement &&
+            !this.monitorAudioElement.paused &&
+            !this.monitorAudioElement.ended;
 
+        if (
+            this.roomId &&
+            this.peerConnections.size === 0 &&
+            !isMonitorPlaying
+        ) {
             console.log(
-                "🏁 Semua outlet sudah selesai memutar audio."
+                "🏁 Semua outlet dan monitor audio telah selesai memutar audio."
             );
 
             await this.stop({ silent: true, isNaturalEnd: true });

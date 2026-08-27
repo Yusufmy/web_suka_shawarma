@@ -176,14 +176,14 @@ export default function UploadLink({
 
       // 2. Hubungi backend untuk mendaftarkan siaran live
       console.log("📡 Mendaftarkan siaran live ke backend...");
-      const response = await startBroadcast({
-        type: "live",
-        target_mode: targetMode,
-        outlet_ids: targetMode === "specific" ? Array.from(selected) : [],
-      });
+      const selectedOutletIds =
+        targetMode === "specific" ? Array.from(selected) : [];
 
-      const newBroadcastId = response.data?.broadcast_id;
-      const newRtcRoomId = response.data?.rtc_room_id;
+      const response = await startBroadcast(targetMode, selectedOutletIds);
+      const broadcast = response?.data || response;
+
+      const newBroadcastId = broadcast?.id || broadcast?.broadcast_id;
+      const newRtcRoomId = broadcast?.rtc_room_id;
 
       if (!newBroadcastId || !newRtcRoomId) {
         throw new Error("Gagal mendapatkan session room siaran dari server");

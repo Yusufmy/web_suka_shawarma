@@ -16,6 +16,7 @@ import EmptyTab from "../../components/dashboard/Tabs/EmptyTab";
 
 import BroadcastPanel from "../../components/dashboard/Broadcast/BroadcastPanel";
 import UploadAudio from "../../components/dashboard/Upload/UploadAudio";
+import UploadLink from "../../components/dashboard/Link/UploadLink";
 import ScheduleAudio from "../../components/dashboard/Schedule/ScheduleAudio";
 import OutletManager from "../../components/dashboard/Outlets/OutletManager";
 
@@ -1522,6 +1523,14 @@ export default function OperatorDashboard() {
             selected={selected}
             outlets={outlets}
             onOutletAudioStateChange={handleOutletAudioStateChange}
+        />
+
+      ) : activeTab === "link" ? (
+
+        <UploadLink
+            targetMode={targetMode}
+            selected={selected}
+            outlets={outlets}
         />
 
       ) : activeTab === "schedule" ? (

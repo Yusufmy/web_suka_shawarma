@@ -13,6 +13,7 @@ import {
   Signal,
   Loader2
 } from "lucide-react";
+import petugasReceiver from "../../services/petugasReceiver";
 
 export default function PetugasWaiting({
   outlet,
@@ -122,9 +123,23 @@ export default function PetugasWaiting({
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-neutral-400">
             {isConnectingAudio
-              ? "Sedang melakukan jabat tangan (handshake) WebRTC audio. Halaman akan otomatis beralih begitu suara tersambung."
+              ? "Sedang memproses sambungan WebRTC audio. Halaman akan otomatis beralih jika suara sudah berbunyi di speaker."
               : "Koneksi WebSocket aktif. Begitu Operator Pusat memulai siaran bicara atau memutar audio, suara akan otomatis diputar di sini."}
           </p>
+
+          {isConnectingAudio && (
+            <button
+              onClick={() => {
+                if (petugasReceiver.audioElement) {
+                  petugasReceiver.audioElement.play().catch((e) => console.warn(e));
+                }
+              }}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs px-4 py-2.5 shadow-lg shadow-orange-500/20 transition-all active:scale-95 animate-pulse"
+            >
+              <Volume2 className="h-4 w-4" />
+              <span>Ketuk untuk Memutar Suara</span>
+            </button>
+          )}
         </div>
 
         {/* Status Cards Grid */}

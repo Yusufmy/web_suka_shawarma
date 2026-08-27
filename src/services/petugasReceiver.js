@@ -65,6 +65,14 @@ class PetugasReceiver {
     if (this.audioElement) {
       this.audioElement.muted = false;
       this.audioElement.volume = this.currentVolume;
+
+      // Event listener pasti: HANYA beralih ke live ketika audio benar-benar bersuara/berputar
+      this.audioElement.onplaying = () => {
+        console.log("🔊 <audio> ONPLAYING: Audio benar-benar bersuara di speaker! -> Beralih ke layar LIVE");
+        if (this.onAudioConnected && this.currentBroadcast) {
+          this.onAudioConnected(this.currentBroadcast);
+        }
+      };
     }
     if (!this.audioContext) {
       try {
@@ -263,22 +271,9 @@ class PetugasReceiver {
         this.handleBroadcastEnded({ room_id: data.rtc_room_id || data.room_id });
       };
 
-      const playPromise = this.audioElement.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            console.log("▶️ Audio file berhasil diputar di speaker -> Pindah ke tampilan LIVE");
-            if (this.onAudioConnected && this.currentBroadcast) {
-              this.onAudioConnected(this.currentBroadcast);
-            }
-          })
-          .catch((err) => {
-            console.warn("Autoplay audio file terblokir:", err);
-            if (this.onAudioConnected && this.currentBroadcast) {
-              this.onAudioConnected(this.currentBroadcast);
-            }
-          });
-      }
+      this.audioElement.play().catch((err) => {
+        console.warn("Autoplay audio file terblokir (butuh klik user):", err);
+      });
     }
   }
 
@@ -440,6 +435,11 @@ class PetugasReceiver {
       const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
       this.remoteStream = stream;
 
+      // Pastikan audio track diaktifkan
+      if (event.track) {
+        event.track.enabled = true;
+      }
+
       if (this.audioElement) {
         this.audioElement.pause();
         this.audioElement.removeAttribute("src");
@@ -448,22 +448,9 @@ class PetugasReceiver {
         this.audioElement.muted = false;
         this.audioElement.volume = this.currentVolume;
 
-        const playPromise = this.audioElement.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              console.log("▶️ Audio streaming berhasil diputar di speaker! -> Beralih ke tampilan LIVE");
-              if (this.onAudioConnected && this.currentBroadcast) {
-                this.onAudioConnected(this.currentBroadcast);
-              }
-            })
-            .catch((err) => {
-              console.warn("⚠️ Autoplay dicegah browser, butuh interaksi klik:", err);
-              if (this.onAudioConnected && this.currentBroadcast) {
-                this.onAudioConnected(this.currentBroadcast);
-              }
-            });
-        }
+        this.audioElement.play().catch((err) => {
+          console.warn("⚠️ Autoplay dicegah browser (butuh klik):", err);
+        });
       }
 
       // Hubungkan ke Web Audio API Analyser HANYA untuk visualizer gelombang suara (TIDAK ke destination agar tidak echo/patah-patah)
@@ -506,10 +493,6 @@ class PetugasReceiver {
       console.log(`🔗 WebRTC Connection State: ${state}`);
       if (this.onConnectionState) {
         this.onConnectionState(state);
-      }
-
-      if (state === "connected" && this.onAudioConnected && this.currentBroadcast) {
-        this.onAudioConnected(this.currentBroadcast);
       }
     };
 

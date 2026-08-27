@@ -107,7 +107,7 @@ class WebRTCService {
         }
     }
 
-    async startBroadcast(roomId, outlets = [], deviceId = null) {
+    async startBroadcast(roomId, outlets = [], deviceId = null, customStream = null) {
         try {
             console.log("🎙️ START WEBRTC BROADCAST");
 
@@ -116,6 +116,14 @@ class WebRTCService {
             this.roomId = roomId;
             this.targetOutlets = outlets;
             this.iceServers = await this.getIceServers();
+
+            if (customStream) {
+                console.log("🔊 Menggunakan audio stream khusus (Tab / Video YouTube)");
+                this.localStream = customStream;
+                const track = this.localStream.getAudioTracks()[0];
+                console.log("✅ Audio stream obtained:", track?.label || "Custom Audio Stream");
+                return true;
+            }
 
             console.log("🎤 Requesting microphone...", { deviceId });
 

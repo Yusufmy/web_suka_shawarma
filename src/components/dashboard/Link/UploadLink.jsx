@@ -7,9 +7,17 @@ import {
   Copy,
   ExternalLink,
   Info,
+  Radio,
+  Square,
+  Volume2,
+  Loader2,
+  RadioTower,
+  Headphones,
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import alert from "../../../helpers/alert";
+import webrtc from "../../../services/webrtc";
+import { startBroadcast, endBroadcast } from "../../../services/broadcast";
 
 export default function UploadLink({
   targetMode = "all",
@@ -18,6 +26,51 @@ export default function UploadLink({
 }) {
   const [inputUrl, setInputUrl] = useState("");
   const [activeUrl, setActiveUrl] = useState("");
+
+  // Broadcast state
+  const [isLive, setIsLive] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [broadcastId, setBroadcastId] = useState(null);
+  const [rtcRoomId, setRtcRoomId] = useState(null);
+  const [duration, setDuration] = useState(0);
+  const [connectedCount, setConnectedCount] = useState(0);
+
+  const activeStreamRef = useRef(null);
+
+  // Timer siaran
+  useEffect(() => {
+    let interval;
+    if (isLive) {
+      interval = setInterval(() => {
+        setDuration((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setDuration(0);
+    }
+    return () => clearInterval(interval);
+  }, [isLive]);
+
+  // Listener koneksi WebRTC
+  useEffect(() => {
+    webrtc.setConnectionStateListener((data) => {
+      if (typeof data === "object" && data !== null) {
+        if (data.state === "connected") {
+          setConnectedCount((prev) => prev + 1);
+        }
+      }
+    });
+
+    return () => {
+      webrtc.setConnectionStateListener(null);
+    };
+  }, []);
+
+  // Format durasi MM:SS
+  const formatDuration = (sec) => {
+    const mins = Math.floor(sec / 60);
+    const secs = sec % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
 
   // Helper untuk mengekstrak ID YouTube dari berbagai variasi URL
   const youtubeData = useMemo(() => {
@@ -84,6 +137,135 @@ export default function UploadLink({
     }
   };
 
+  // ============================================================
+  // MULAI SIARKAN SUARA VIDEO / TAB KE SELURUH OUTLET (WEBRTC)
+  // ============================================================
+  const handleStartBroadcast = async () => {
+    const selectedOutlets =
+      targetMode === "all"
+        ? outlets
+        : outlets.filter((o) => selected.has(o.id));
+
+    if (!selectedOutlets.length) {
+      alert.error(
+        targetMode === "all"
+          ? "Tidak ada outlet terdaftar"
+          : "Pilih minimal satu outlet di sidebar"
+      );
+      return;
+    }
+
+    try {
+      setIsConnecting(true);
+
+      // 1. Minta browser menangkap audio Tab / Layar
+      console.log("🔊 Meminta izin penangkapan suara tab browser...");
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+
+      const audioTrack = displayStream.getAudioTracks()[0];
+
+      if (!audioTrack) {
+        // Matikan track video dummy
+        displayStream.getTracks().forEach((t) => t.stop());
+        setIsConnecting(false);
+        alert.error(
+          "Audio tab tidak terdeteksi! Pastikan Anda mencentang 'Share tab audio' / 'Bagikan audio tab' saat memilih tab browser."
+        );
+        return;
+      }
+
+      // Hentikan video track dummy agar menghemat RAM & bandwidth (hanya butuh audionya)
+      displayStream.getVideoTracks().forEach((t) => t.stop());
+
+      const audioOnlyStream = new MediaStream([audioTrack]);
+      activeStreamRef.current = audioOnlyStream;
+
+      // 2. Hubungi backend untuk mendaftarkan siaran live
+      console.log("📡 Mendaftarkan siaran live ke backend...");
+      const response = await startBroadcast({
+        type: "live",
+        target_mode: targetMode,
+        outlet_ids: targetMode === "specific" ? Array.from(selected) : [],
+      });
+
+      const newBroadcastId = response.data?.broadcast_id;
+      const newRtcRoomId = response.data?.rtc_room_id;
+
+      if (!newBroadcastId || !newRtcRoomId) {
+        throw new Error("Gagal mendapatkan session room siaran dari server");
+      }
+
+      setBroadcastId(newBroadcastId);
+      setRtcRoomId(newRtcRoomId);
+
+      // 3. Mulai WebRTC Broadcast dengan audio stream video tersebut
+      console.log("🎙️ Memulai WebRTC live stream suara video...");
+      await webrtc.startBroadcast(
+        newRtcRoomId,
+        selectedOutlets,
+        null,
+        audioOnlyStream
+      );
+
+      setIsLive(true);
+      setIsConnecting(false);
+      alert.success("Siaran suara video berhasil mengudara ke seluruh outlet!");
+
+      // 4. Pasang listener jika operator mengklik 'Stop sharing' di bar browser
+      audioTrack.onended = async () => {
+        console.log("🛑 Penangkapan audio tab dihentikan oleh browser");
+        await handleStopBroadcast();
+      };
+    } catch (error) {
+      console.error("❌ Gagal memulai siaran suara video:", error);
+      setIsConnecting(false);
+      setIsLive(false);
+
+      if (error.name === "NotAllowedError") {
+        alert.warn("Pemilihan audio tab dibatalkan");
+      } else {
+        alert.error(
+          error.response?.data?.message ||
+            error.message ||
+            "Gagal menyiarkan suara video ke outlet"
+        );
+      }
+    }
+  };
+
+  // ============================================================
+  // HENTIKAN SIARAN
+  // ============================================================
+  const handleStopBroadcast = async () => {
+    try {
+      if (broadcastId) {
+        await endBroadcast(broadcastId);
+      }
+
+      await webrtc.stop();
+
+      if (activeStreamRef.current) {
+        activeStreamRef.current.getTracks().forEach((t) => t.stop());
+        activeStreamRef.current = null;
+      }
+
+      setIsLive(false);
+      setBroadcastId(null);
+      setRtcRoomId(null);
+      setConnectedCount(0);
+      alert.info("Siaran suara video telah dihentikan");
+    } catch (error) {
+      console.error("Gagal menghentikan siaran:", error);
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* ======================================================
@@ -96,9 +278,17 @@ export default function UploadLink({
             Unggah Link
           </h2>
           <p className="mt-1 text-xs text-neutral-500">
-            Tempel link video (YouTube / TikTok / dll) untuk memutar dan memantau tayangan video langsung di sini.
+            Putar video/musik dari link dan siarkan suaranya langsung ke seluruh speaker outlet tanpa klik di HP outlet.
           </p>
         </div>
+
+        {/* STATUS BADGE JIKA SEDANG LIVE */}
+        {isLive && (
+          <div className="flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3.5 py-1 text-xs font-semibold text-red-400 animate-pulse">
+            <span className="h-2 w-2 rounded-full bg-red-500" />
+            <span>SEDANG MENGUDARA ({formatDuration(duration)})</span>
+          </div>
+        )}
       </div>
 
       {/* ======================================================
@@ -113,7 +303,7 @@ export default function UploadLink({
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-5 shadow-xl">
             <form onSubmit={handleApplyUrl} className="space-y-3">
               <label className="block text-xs font-medium text-neutral-300">
-                Tempel Link Video / Musik:
+                Tempel Link Video / Musik (YouTube, TikTok, dll):
               </label>
 
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -122,7 +312,7 @@ export default function UploadLink({
                     type="url"
                     value={inputUrl}
                     onChange={(e) => setInputUrl(e.target.value)}
-                    placeholder="https://www.youtube.com/watch?v=... atau link TikTok"
+                    placeholder="https://www.youtube.com/watch?v=... atau https://vt.tiktok.com/..."
                     className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-2.5 text-sm text-white placeholder-neutral-500 transition focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
                   />
                   {inputUrl && (
@@ -160,7 +350,7 @@ export default function UploadLink({
           </div>
 
           {/* ==================================================
-              CARD: VIDEO PLAYER CONTAINER
+              CARD: VIDEO PLAYER CONTAINER & BROADCAST ACTION
           ================================================== */}
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 shadow-2xl">
             <div className="mb-4 flex items-center justify-between border-b border-neutral-800/80 pb-3">
@@ -186,7 +376,7 @@ export default function UploadLink({
 
             {/* VIDEO DISPLAY */}
             {youtubeData ? (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {youtubeData.type === "youtube" ? (
                   <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-neutral-800 bg-black shadow-2xl">
                     <iframe
@@ -214,11 +404,69 @@ export default function UploadLink({
                       rel="noreferrer"
                       className="mt-4 flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-orange-500"
                     >
-                      <span>Tonton di Situs Asli</span>
+                      <span>Buka Video di Tab Baru</span>
                       <ExternalLink size={14} />
                     </a>
                   </div>
                 )}
+
+                {/* ==============================================
+                    TOMBOL SIARKAN SUARA KE SEMUA OUTLET
+                ============================================== */}
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950/80 p-4">
+                  <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+                    <div className="flex items-center gap-3">
+                      <div className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors ${
+                        isLive ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40 animate-pulse" : "bg-orange-500/10 text-orange-500"
+                      }`}>
+                        <RadioTower size={22} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">
+                          {isLive ? "Siaran Suara Video Aktif" : "Siarkan Suara Video Ini"}
+                        </h4>
+                        <p className="text-xs text-neutral-400">
+                          {isLive
+                            ? `Durasi: ${formatDuration(duration)} • Suara mengalir ke semua outlet`
+                            : "Alirkan suara video YouTube ini ke speaker seluruh outlet secara real-time"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      {isLive ? (
+                        <button
+                          type="button"
+                          onClick={handleStopBroadcast}
+                          className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-red-500 to-red-700 px-6 py-3 text-xs font-bold text-white shadow-lg shadow-red-950/30 transition hover:brightness-110 active:scale-95"
+                        >
+                          <Square size={16} className="fill-white" />
+                          <span>HENTIKAN SIARAN</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isConnecting}
+                          onClick={handleStartBroadcast}
+                          className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-orange-500 to-orange-700 px-6 py-3 text-xs font-bold text-white shadow-lg shadow-orange-950/30 transition hover:brightness-110 active:scale-95 disabled:opacity-50"
+                        >
+                          {isConnecting ? (
+                            <>
+                              <Loader2 size={16} className="animate-spin" />
+                              <span>Menghubungkan...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Volume2 size={16} />
+                              <span>SIARKAN KE SEMUA OUTLET</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
               </div>
             ) : (
               /* EMPTY STATE */
@@ -230,7 +478,7 @@ export default function UploadLink({
                   Belum Ada Link Video yang Dimuat
                 </h4>
                 <p className="mt-1 max-w-sm text-xs leading-relaxed text-neutral-500">
-                  Tempelkan link YouTube (Video biasa atau Shorts) atau TikTok pada kolom di atas untuk langsung menampilkan dan memutar videonya di sini.
+                  Tempelkan link YouTube (Video biasa atau Shorts) atau TikTok pada kolom di atas untuk langsung memutar dan menyiarkan suaranya ke outlet.
                 </p>
               </div>
             )}
@@ -243,10 +491,13 @@ export default function UploadLink({
             <Info size={16} className="mt-0.5 shrink-0 text-orange-400" />
             <div className="space-y-1">
               <p className="font-semibold text-neutral-200">
-                Petunjuk Penggunaan Fitur Unggah Link:
+                Cara Kerja Penyiaran Suara Video:
               </p>
               <p className="leading-relaxed">
-                Anda dapat menyalin link video dari YouTube atau TikTok, lalu menempelkannya di halaman ini. Video akan langsung termuat di layar player dan dapat diputar secara langsung oleh operator.
+                1. Tempel link video YouTube / TikTok dan putar videonya.<br />
+                2. Klik tombol <strong>"SIARKAN KE SEMUA OUTLET"</strong>.<br />
+                3. Saat browser Chrome memunculkan pop-up, pilih <strong>Tab ini</strong> dan pastikan opsi <strong>"Bagikan audio tab"</strong> tercentang.<br />
+                4. Suara video akan <strong>langsung menggelegar di seluruh speaker outlet otomatis tanpa perlu klik apapun di HP outlet</strong>.
               </p>
             </div>
           </div>

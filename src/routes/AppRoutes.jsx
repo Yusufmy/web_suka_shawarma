@@ -8,6 +8,7 @@ import {
 import OperatorLogin from "../pages/auth/OperatorLogin";
 import OperatorDashboard from "../pages/dashboard/OperatorDashboard";
 import PetugasPage from "../pages/petugas/PetugasPage";
+import MasterDevPage from "../pages/master/MasterDevPage";
 import ProtectedRoute from "../components/auth/ProtectedRoute";
 import GuestRoute from "../components/auth/GuestRoute";
 
@@ -15,6 +16,12 @@ export default function AppRoutes() {
     return (
         <BrowserRouter>
             <Routes>
+
+                {/* Master Dev Monitoring */}
+                <Route
+                    path="/master-dev"
+                    element={<MasterDevPage />}
+                />
 
                 {/* Web Listener / Outlet / Petugas / Atasan */}
                 <Route

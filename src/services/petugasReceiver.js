@@ -1,11 +1,17 @@
 import echo from "../websocket/echo";
 import petugasService, { getOrCreateDeviceId } from "./petugasService";
 
+// 1-second silent WAV base64 untuk keep-alive background audio di Chrome Android / iOS
+const SILENT_AUDIO_URI =
+  "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+
 class PetugasReceiver {
   constructor() {
     this.outlet = null;
     this.token = null;
     this.audioElement = null;
+    this.keepAliveAudio = null;
+    this.wakeLock = null;
     this.peerConnection = null;
     this.currentBroadcast = null;
     this.currentRoomId = null;
@@ -26,6 +32,63 @@ class PetugasReceiver {
     this.onBroadcastEnded = null;
     this.onConnectionState = null;
     this.isListening = false;
+  }
+
+  // Menjaga agar browser mobile (Chrome di Android/iOS) tidak mematikan WebRTC audio saat di background / layar mati
+  startBackgroundAudioKeepAlive(title = "Siaran Langsung Suka Shawarma") {
+    try {
+      if (!this.keepAliveAudio) {
+        this.keepAliveAudio = new Audio(SILENT_AUDIO_URI);
+        this.keepAliveAudio.loop = true;
+        this.keepAliveAudio.volume = 0.01;
+      }
+      this.keepAliveAudio.play().catch(() => {});
+
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: title,
+          artist: "Operator Pusat",
+          album: "Suka Shawarma Live Radio",
+        });
+        navigator.mediaSession.playbackState = "playing";
+        navigator.mediaSession.setActionHandler("play", () => {
+          if (this.audioElement) this.audioElement.play().catch(() => {});
+          if (this.keepAliveAudio) this.keepAliveAudio.play().catch(() => {});
+        });
+      }
+
+      if ("wakeLock" in navigator && !this.wakeLock) {
+        navigator.wakeLock
+          .request("screen")
+          .then((wl) => {
+            this.wakeLock = wl;
+            console.log("🔒 Screen WakeLock aktif untuk siaran audio");
+          })
+          .catch(() => {});
+      }
+    } catch (e) {
+      console.warn("Keep-alive background audio error:", e);
+    }
+  }
+
+  stopBackgroundAudioKeepAlive() {
+    if (this.keepAliveAudio) {
+      try {
+        this.keepAliveAudio.pause();
+        this.keepAliveAudio.currentTime = 0;
+      } catch (e) {}
+    }
+    if (this.wakeLock) {
+      try {
+        this.wakeLock.release();
+      } catch (e) {}
+      this.wakeLock = null;
+    }
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.playbackState = "none";
+      } catch (e) {}
+    }
   }
 
   // Update volume
@@ -141,6 +204,7 @@ class PetugasReceiver {
     this.leaveRoomChannel();
     this.closePeerConnection();
     this.cleanupAudioPlayback();
+    this.stopBackgroundAudioKeepAlive();
 
     if (echo && this.isListening) {
       echo.leaveChannel("outlets");
@@ -262,6 +326,9 @@ class PetugasReceiver {
 
     this.currentBroadcast = data;
     
+    // Aktifkan silent keep-alive loop agar Chrome di background / layar mati tidak men-suspend WebRTC
+    this.startBackgroundAudioKeepAlive("Siaran Bicara Langsung (Live Mic)");
+
     // Beritahu UI bahwa sedang menghubungkan audio (tetap di standby dulu sampai audio masuk)
     if (this.onBroadcastConnecting) {
       this.onBroadcastConnecting(data);
@@ -284,6 +351,9 @@ class PetugasReceiver {
 
     this.currentBroadcast = data;
 
+    // Aktifkan keep-alive untuk background playback
+    this.startBackgroundAudioKeepAlive(data.audio?.name || "Pemutaran File Audio");
+
     // Beritahu UI bahwa sedang menghubungkan audio
     if (this.onBroadcastConnecting) {
       this.onBroadcastConnecting(data);
@@ -296,9 +366,50 @@ class PetugasReceiver {
       this.audioElement.muted = false;
       this.audioElement.loop = false; // JANGAN looping
 
+      // SINKRONISASI WAKTU PLAY (LATE-JOIN AUDIO SYNC):
+      // Jika outlet baru membuka web/telat tersambung saat audio file sudah berjalan di tengah-tengah,
+      // lompat langsung ke detik yang sama persis dengan yang sedang diputar di operator/outlet lain.
+      if (data.started_at) {
+        const startTime = new Date(data.started_at).getTime();
+        const elapsedSeconds = Math.max(0, (Date.now() - startTime) / 1000);
+
+        this.audioElement.onloadedmetadata = () => {
+          if (elapsedSeconds > 0 && elapsedSeconds < this.audioElement.duration) {
+            console.log(`⏩ [Late Join Sync] Audio disinkronkan ke detik ke-${elapsedSeconds.toFixed(1)}s`);
+            try {
+              this.audioElement.currentTime = elapsedSeconds;
+            } catch (e) {
+              console.warn("Seek error:", e);
+            }
+          } else if (this.audioElement.duration && elapsedSeconds >= this.audioElement.duration) {
+            console.log("⏹️ [Late Join Sync] Audio sudah selesai diputar sebelumnya.");
+            this.handleBroadcastEnded({ room_id: data.rtc_room_id || data.room_id });
+            return;
+          }
+        };
+      }
+
       this.audioElement.onended = () => {
-        console.log("⏹️ Audio file selesai diputar");
+        // Validasi apakah audio benar-benar sudah tuntas atau hanya buffer stall prematur
+        if (
+          this.audioElement &&
+          this.audioElement.duration &&
+          this.audioElement.currentTime < this.audioElement.duration - 1.5
+        ) {
+          console.warn(
+            `⚠️ Audio receiver stall/terputus pada detik ${this.audioElement.currentTime.toFixed(1)} / ${this.audioElement.duration.toFixed(1)}s. Melanjutkan pemutaran...`
+          );
+          this.audioElement.play().catch(() => {});
+          return;
+        }
+
+        console.log("⏹️ Audio file selesai diputar penuh");
         this.handleBroadcastEnded({ room_id: data.rtc_room_id || data.room_id });
+      };
+
+      this.audioElement.onstalled = () => {
+        console.warn("⚠️ Audio receiver stream stalled, mencoba resume...");
+        this.audioElement?.play().catch(() => {});
       };
 
       this.audioElement.play().catch((err) => {
@@ -334,16 +445,11 @@ class PetugasReceiver {
     this.clearReadyRetry();
     this.leaveRoomChannel();
     this.closePeerConnection();
+    this.stopBackgroundAudioKeepAlive();
 
     this.currentBroadcast = null;
     this.currentRoomId = null;
     this.remoteStream = null;
-
-    if ("mediaSession" in navigator) {
-      try {
-        navigator.mediaSession.playbackState = "none";
-      } catch (e) {}
-    }
 
     if (this.onBroadcastEnded) {
       this.onBroadcastEnded(data);

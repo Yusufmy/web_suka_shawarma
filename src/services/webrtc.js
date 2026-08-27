@@ -221,9 +221,10 @@ class WebRTCService {
             return;
         }
 
-        const isTargeted = this.targetOutlets.some(
-            (outlet) => Number(outlet.id) === id
-        );
+        const isTargeted =
+            !this.targetOutlets ||
+            this.targetOutlets.length === 0 ||
+            this.targetOutlets.some((outlet) => Number(outlet.id) === id);
 
         if (!isTargeted) {
             console.warn(

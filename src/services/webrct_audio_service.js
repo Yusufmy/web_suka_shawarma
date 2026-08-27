@@ -348,13 +348,33 @@ class WebRTCAudioService {
             this.monitorAudioElement.preload = "auto";
 
             this.monitorAudioElement.onended = async () => {
+                // Pastikan audio benar-benar sudah mencapai akhir file (bukan buffer stall prematur)
+                if (
+                    this.monitorAudioElement &&
+                    this.monitorAudioElement.duration &&
+                    this.monitorAudioElement.currentTime < this.monitorAudioElement.duration - 1.5
+                ) {
+                    console.warn(
+                        `⚠️ Monitor audio stall pada detik ${this.monitorAudioElement.currentTime.toFixed(1)} / ${this.monitorAudioElement.duration.toFixed(1)}s. Melanjutkan pemutaran...`
+                    );
+                    try {
+                        await this.monitorAudioElement.play();
+                    } catch (e) {}
+                    return;
+                }
+
                 console.log(
-                    "🏁 Audio monitor lokal selesai diputar (file audio habis). Mengakhiri broadcast..."
+                    "🏁 Audio monitor lokal selesai diputar penuh. Mengakhiri broadcast..."
                 );
                 await this.stop({ silent: true, isNaturalEnd: true });
                 if (this.onStateChange) {
                     this.onStateChange("ended");
                 }
+            };
+
+            this.monitorAudioElement.onstalled = () => {
+                console.warn("⚠️ Monitor audio stalled, mencoba resume...");
+                this.monitorAudioElement?.play().catch(() => {});
             };
 
             console.log(
@@ -867,12 +887,29 @@ class WebRTCAudioService {
             );
 
             audioElement.onended = () => {
+                // Pastikan audio outlet benar-benar sudah mencapai akhir file
+                if (
+                    audioElement &&
+                    audioElement.duration &&
+                    audioElement.currentTime < audioElement.duration - 1.5
+                ) {
+                    console.warn(
+                        `⚠️ Audio outlet ${outletId} stall pada detik ${audioElement.currentTime.toFixed(1)} / ${audioElement.duration.toFixed(1)}s. Melanjutkan...`
+                    );
+                    audioElement.play().catch(() => {});
+                    return;
+                }
 
                 console.log(
-                    `⏹️ Outlet ${outletId} selesai memutar audio`
+                    `⏹️ Outlet ${outletId} selesai memutar audio penuh`
                 );
 
                 this.finishOutlet(outletId);
+            };
+
+            audioElement.onstalled = () => {
+                console.warn(`⚠️ Audio outlet ${outletId} stalled, mencoba resume...`);
+                audioElement.play().catch(() => {});
             };
 
         } catch (error) {

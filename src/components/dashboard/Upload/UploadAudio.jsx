@@ -185,31 +185,6 @@ export default function UploadAudio({
   }, []);
 
   // ============================================================
-  // CLEANUP SAAT COMPONENT DITUTUP
-  // ============================================================
-
-  useEffect(() => {
-
-    return () => {
-
-      console.log(
-        "🧹 UploadAudio cleanup"
-      );
-
-      WebRTCAudioService
-        .stop()
-        .catch((error) => {
-          console.error(
-            "❌ Cleanup WebRTC audio gagal:",
-            error
-          );
-        });
-
-    };
-
-  }, []);
-
-  // ============================================================
   // LISTENER WEBRTC AUDIO SERVICE
   // ============================================================
 

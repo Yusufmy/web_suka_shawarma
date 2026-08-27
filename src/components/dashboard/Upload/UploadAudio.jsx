@@ -379,6 +379,7 @@ export default function UploadAudio({
       // --------------------------------------------------------
 
       await loadAudios();
+      alert.success("File audio berhasil di-upload!");
 
     } catch (error) {
 
@@ -386,6 +387,17 @@ export default function UploadAudio({
         "❌ Upload audio gagal:",
         error.response?.data || error
       );
+
+      const status = error.response?.status;
+      const apiMsg = error.response?.data?.message;
+
+      if (status === 413) {
+        alert.error("Ukuran file terlalu besar untuk server (Nginx 413 Payload Too Large).");
+      } else if (status === 422) {
+        alert.error(apiMsg || "Validasi gagal: Format audio tidak didukung atau ukuran melebihi batas PHP.");
+      } else {
+        alert.error(apiMsg || "Gagal meng-upload file audio ke server.");
+      }
 
     } finally {
 

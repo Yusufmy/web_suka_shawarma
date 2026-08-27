@@ -18,7 +18,12 @@ const audio = {
 
             const response = await api.post(
                 "/audio/upload",
-                formData
+                formData,
+                {
+                    headers: {
+                        "Content-Type": "multipart/form-data",
+                    },
+                }
             );
 
             return response.data;

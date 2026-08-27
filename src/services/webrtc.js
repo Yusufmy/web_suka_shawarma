@@ -184,6 +184,8 @@ class WebRTCService {
     // ============================================================
 
     async handleOutletReady(outletId) {
+        const id = Number(outletId);
+
         if (!this.localStream || !this.roomId) {
             console.warn(
                 "⚠️ Mic/room belum siap, abaikan ready outlet:",
@@ -194,7 +196,7 @@ class WebRTCService {
         }
 
         const isTargeted = this.targetOutlets.some(
-            (outlet) => outlet.id === outletId
+            (outlet) => Number(outlet.id) === id
         );
 
         if (!isTargeted) {
@@ -206,7 +208,7 @@ class WebRTCService {
             return;
         }
 
-        if (this.peerConnections.has(outletId)) {
+        if (this.peerConnections.has(id) || this.peerConnections.has(String(outletId))) {
             console.warn(
                 "⚠️ Outlet sudah punya PeerConnection, abaikan ready ulang:",
                 outletId
@@ -215,7 +217,7 @@ class WebRTCService {
             return;
         }
 
-        if (this.creatingOfferFor.get(outletId)) {
+        if (this.creatingOfferFor.get(id) || this.creatingOfferFor.get(String(outletId))) {
             console.warn(
                 "⚠️ Offer sedang dibuat untuk outlet ini, skip:",
                 outletId
@@ -225,7 +227,8 @@ class WebRTCService {
         }
 
         try {
-            this.creatingOfferFor.set(outletId, true);
+            this.creatingOfferFor.set(id, true);
+            this.creatingOfferFor.set(String(outletId), true);
 
             console.log("====================================");
             console.log("🔗 CONNECTING OUTLET:", outletId);
@@ -242,15 +245,11 @@ class WebRTCService {
                         DEFAULT_ICE_SERVERS,
                 });
 
-            this.peerConnections.set(
-                outletId,
-                peerConnection
-            );
+            this.peerConnections.set(id, peerConnection);
+            this.peerConnections.set(String(outletId), peerConnection);
 
-            this.pendingRemoteIce.set(
-                outletId,
-                []
-            );
+            this.pendingRemoteIce.set(id, []);
+            this.pendingRemoteIce.set(String(outletId), []);
 
             // ------------------------------------------------------
             // ADD MICROPHONE TRACK (stream yang sama dipakai
@@ -571,7 +570,10 @@ class WebRTCService {
     // ============================================================
 
     async flushPendingRemoteIce(outletId) {
+        const id = Number(outletId);
         const peerConnection =
+            this.peerConnections.get(id) ||
+            this.peerConnections.get(String(outletId)) ||
             this.peerConnections.get(outletId);
 
         if (!peerConnection) {
@@ -579,7 +581,10 @@ class WebRTCService {
         }
 
         const pending =
-            this.pendingRemoteIce.get(outletId) || [];
+            this.pendingRemoteIce.get(id) ||
+            this.pendingRemoteIce.get(String(outletId)) ||
+            this.pendingRemoteIce.get(outletId) ||
+            [];
 
         if (pending.length === 0) {
             return;
@@ -589,7 +594,8 @@ class WebRTCService {
             `🧊 Flushing ${pending.length} remote ICE → outlet ${outletId}`
         );
 
-        this.pendingRemoteIce.set(outletId, []);
+        this.pendingRemoteIce.set(id, []);
+        this.pendingRemoteIce.set(String(outletId), []);
 
         for (const candidate of pending) {
             try {

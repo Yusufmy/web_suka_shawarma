@@ -422,6 +422,7 @@ class PetugasReceiver {
     };
 
     const outletId = parseInt(this.outlet?.id, 10);
+    const myDeviceId = getOrCreateDeviceId();
 
     this.peerConnection = new RTCPeerConnection(config);
 

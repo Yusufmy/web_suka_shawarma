@@ -234,17 +234,26 @@ class WebRTCService {
             return;
         }
 
+        if (this.creatingOfferFor.get(peerKey) || (!deviceId && this.creatingOfferFor.get(id))) {
+            console.log(
+                `ℹ️ Peer ${peerKey} sedang dalam proses pembuatan Offer, abaikan ready berulang.`
+            );
+            return;
+        }
+
         // Jika peer ini mengirim sinyal ready baru (misal karena refresh halaman atau reconnect),
         // cek apakah koneksi lama masih aktif atau sedang dalam proses negosiasi.
         if (this.peerConnections.has(peerKey) || (!deviceId && (this.peerConnections.has(id) || this.peerConnections.has(String(outletId))))) {
             const oldPc = this.peerConnections.get(peerKey) || this.peerConnections.get(id) || this.peerConnections.get(String(outletId));
             
-            // JIKA KONEKSI SUDAH CONNECTED ATAU SEDANG CONNECTING, JANGAN DIRESET!
-            if (oldPc && (oldPc.connectionState === "connected" || oldPc.connectionState === "connecting")) {
-                console.log(
-                    `ℹ️ Peer ${peerKey} sudah dalam status connectionState='${oldPc.connectionState}', abaikan sinyal ready berulang.`
-                );
-                return;
+            // JIKA KONEKSI MASIH AKTIF (connected, connecting, new) DAN BELUM CLOSED, JANGAN DIRESET!
+            if (oldPc && (oldPc.connectionState === "connected" || oldPc.connectionState === "connecting" || oldPc.connectionState === "new")) {
+                if (oldPc.signalingState !== "closed") {
+                    console.log(
+                        `ℹ️ Peer ${peerKey} sudah aktif (connectionState='${oldPc.connectionState}', signaling='${oldPc.signalingState}'), abaikan sinyal ready berulang.`
+                    );
+                    return;
+                }
             }
             
             // JIKA OFFER BARU SAJA DIKIRIM DAN SEDANG MENUNGGU ANSWER, JANGAN DIRESET!
@@ -282,18 +291,12 @@ class WebRTCService {
             }
         }
 
-        if (this.creatingOfferFor.get(peerKey)) {
-            console.warn(
-                "⚠️ Offer sedang dibuat untuk peer ini, skip:",
-                peerKey
-            );
-
-            return;
+        this.creatingOfferFor.set(peerKey, true);
+        if (!deviceId) {
+            this.creatingOfferFor.set(id, true);
         }
 
         try {
-            this.creatingOfferFor.set(peerKey, true);
-
             console.log("====================================");
             console.log("🔗 CONNECTING PEER:", peerKey);
             console.log("====================================");

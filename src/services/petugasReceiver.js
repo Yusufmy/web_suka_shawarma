@@ -345,46 +345,45 @@ class PetugasReceiver {
     this.peerConnection.ontrack = (event) => {
       console.log("==========================================");
       console.log("🔊 REMOTE AUDIO TRACK DITERIMA DARI OPERATOR!");
-      console.log("Kind:", event.track.kind, "Streams:", event.streams.length);
+      console.log("Kind:", event.track.kind, "Streams:", event.streams ? event.streams.length : 0);
       console.log("==========================================");
 
-      if (event.streams && event.streams[0]) {
-        this.remoteStream = event.streams[0];
+      const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
+      this.remoteStream = stream;
 
-        if (this.audioElement) {
-          this.audioElement.srcObject = this.remoteStream;
-          this.audioElement.muted = false;
+      if (this.audioElement) {
+        this.audioElement.srcObject = this.remoteStream;
+        this.audioElement.muted = false;
 
-          const playPromise = this.audioElement.play();
-          if (playPromise !== undefined) {
-            playPromise
-              .then(() => {
-                console.log("▶️ Audio streaming berhasil diputar di speaker!");
-              })
-              .catch((err) => {
-                console.warn("⚠️ Autoplay dicegah browser, butuh interaksi klik:", err);
-              });
+        const playPromise = this.audioElement.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              console.log("▶️ Audio streaming berhasil diputar di speaker!");
+            })
+            .catch((err) => {
+              console.warn("⚠️ Autoplay dicegah browser, butuh interaksi klik:", err);
+            });
+        }
+      }
+
+      // Hubungkan ke Web Audio API Analyser untuk visualizer gelombang suara
+      if (this.audioContext && this.analyser) {
+        try {
+          if (this.audioContext.state === "suspended") {
+            this.audioContext.resume();
           }
+          const source = this.audioContext.createMediaStreamSource(this.remoteStream);
+          source.connect(this.analyser);
+          console.log("📊 Analyser berhasil tersambung ke stream");
+        } catch (err) {
+          console.warn("Analyser connection error:", err);
         }
+      }
 
-        // Hubungkan ke Web Audio API Analyser untuk visualizer gelombang suara
-        if (this.audioContext && this.analyser) {
-          try {
-            if (this.audioContext.state === "suspended") {
-              this.audioContext.resume();
-            }
-            const source = this.audioContext.createMediaStreamSource(this.remoteStream);
-            source.connect(this.analyser);
-            console.log("📊 Analyser berhasil tersambung ke stream");
-          } catch (err) {
-            console.warn("Analyser connection error:", err);
-          }
-        }
-
-        // HANYA PINDAH KE HALAMAN LIVE KETIKA AUDIO TRACK BENAR-BENAR DITERIMA
-        if (this.onAudioConnected && this.currentBroadcast) {
-          this.onAudioConnected(this.currentBroadcast);
-        }
+      // HANYA PINDAH KE HALAMAN LIVE KETIKA AUDIO TRACK BENAR-BENAR DITERIMA
+      if (this.onAudioConnected && this.currentBroadcast) {
+        this.onAudioConnected(this.currentBroadcast);
       }
     };
 

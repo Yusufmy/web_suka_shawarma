@@ -53,6 +53,30 @@ export default function PetugasLive({
     return `${mins}:${secs}`;
   };
 
+  // Cek apakah audio sedang aktif berputar saat layar Live terbuka
+  useEffect(() => {
+    const el = petugasReceiver.audioElement;
+    if (el) {
+      el.muted = false;
+      el.volume = volume;
+      const playPromise = el.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setNeedsUserClick(false);
+          })
+          .catch((err) => {
+            console.warn("Autoplay dicegah browser, butuh interaksi user:", err);
+            setNeedsUserClick(true);
+          });
+      }
+    }
+
+    if (petugasReceiver.audioContext && petugasReceiver.audioContext.state === "suspended") {
+      petugasReceiver.audioContext.resume().catch(() => {});
+    }
+  }, []);
+
   // Coba resume audio jika sempat dicegah browser
   const resumeAudioPlay = () => {
     if (petugasReceiver.audioContext && petugasReceiver.audioContext.state === "suspended") {
@@ -60,6 +84,7 @@ export default function PetugasLive({
     }
     if (petugasReceiver.audioElement) {
       petugasReceiver.audioElement.muted = false;
+      petugasReceiver.audioElement.volume = volume;
       petugasReceiver.audioElement.play().then(() => {
         setNeedsUserClick(false);
       }).catch((e) => {

@@ -98,11 +98,6 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
     });
   };
 
-  const presetOutlets = [
-    "Outlet Pusat1",
-    "Outlet Pusat2",
-  ];
-
   return (
     <div className="w-full max-w-md">
       {/* Brand Header */}
@@ -234,32 +229,6 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
             <p className="mt-1.5 text-xs text-neutral-500">
               Masukkan nama outlet yang terdaftar di sistem.
             </p>
-          </div>
-
-          {/* Quick Select Buttons */}
-          <div>
-            <span className="block text-xs font-medium text-neutral-400 mb-2">
-              Pilihan Cepat:
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              {presetOutlets.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => {
-                    setOutletName(item);
-                    setErrorMsg("");
-                  }}
-                  className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all text-center ${
-                    outletName === item
-                      ? "bg-orange-500/20 text-orange-400 border border-orange-500/50 shadow-sm shadow-orange-500/20"
-                      : "bg-neutral-800/70 text-neutral-300 hover:bg-neutral-800 hover:text-white border border-neutral-700/60"
-                  }`}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
           </div>
 
           <div className="pt-2">

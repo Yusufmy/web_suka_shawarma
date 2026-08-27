@@ -12,10 +12,12 @@ import api from "./api";
  */
 export async function startBroadcast(
     targetMode = "all",
-    selectedOutletIds = []
+    selectedOutletIds = [],
+    extra = {}
 ) {
     const payload = {
         target_mode: targetMode,
+        ...extra,
     };
 
     if (targetMode === "specific") {

@@ -28,6 +28,7 @@ export default function PetugasLive({
   const [isMuted, setIsMuted] = useState(false);
   const [needsUserClick, setNeedsUserClick] = useState(false);
   const previousVolume = useRef(volume);
+  const startSecondsRef = useRef(0);
 
   // Timer counter
   useEffect(() => {
@@ -39,6 +40,7 @@ export default function PetugasLive({
         initialSecs = Math.floor((now - start) / 1000);
       }
     }
+    startSecondsRef.current = initialSecs;
     setSeconds(initialSecs);
 
     const interval = setInterval(() => {
@@ -232,9 +234,10 @@ export default function PetugasLive({
 
         {/* YouTube Video Player jika siaran bertipe YouTube */}
         {isYouTube && youtubeVideoId ? (
-          <div className="mt-4 overflow-hidden rounded-xl border border-neutral-800 bg-black aspect-video shadow-2xl">
+          <div className="mt-4 overflow-hidden rounded-xl border border-neutral-800 bg-black aspect-video shadow-2xl relative">
             <iframe
-              src={`https://www.youtube.com/embed/${youtubeVideoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&start=${Math.max(0, seconds)}`}
+              key={`${youtubeVideoId}-${startSecondsRef.current}`}
+              src={`https://www.youtube.com/embed/${youtubeVideoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&start=${startSecondsRef.current}`}
               title="YouTube Live Broadcast"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowFullScreen

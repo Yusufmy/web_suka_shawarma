@@ -339,7 +339,10 @@ class PetugasReceiver {
       const videoId = data.youtube_id || (data.rtc_room_id ? data.rtc_room_id.replace(/^yt-/, "").split("-")[0] : null);
       if (videoId) {
         console.log("🎬 Memutar siaran YouTube langsung di outlet:", videoId);
-        this.playYouTubeAudio(videoId, data);
+        this.startBackgroundAudioKeepAlive(data.title || "Siaran YouTube");
+        if (this.onAudioConnected) {
+          this.onAudioConnected(data);
+        }
         return;
       }
     }
@@ -355,38 +358,6 @@ class PetugasReceiver {
     const roomId = data.rtc_room_id;
     if (roomId) {
       await this.joinWebRTCRoom(roomId, data.broadcast_id);
-    }
-  }
-
-  // Putar audio YouTube secara otomatis di outlet
-  playYouTubeAudio(videoId, data) {
-    if (!videoId) return;
-
-    this.startBackgroundAudioKeepAlive(data.title || "Siaran YouTube");
-
-    let ytFrame = document.getElementById("outlet-youtube-iframe");
-    if (!ytFrame) {
-      ytFrame = document.createElement("iframe");
-      ytFrame.id = "outlet-youtube-iframe";
-      ytFrame.style.position = "fixed";
-      ytFrame.style.top = "-9999px";
-      ytFrame.style.left = "-9999px";
-      ytFrame.style.width = "1px";
-      ytFrame.style.height = "1px";
-      ytFrame.style.opacity = "0";
-      ytFrame.allow = "autoplay; encrypted-media";
-      document.body.appendChild(ytFrame);
-    }
-
-    let elapsed = 0;
-    if (data.started_at) {
-      elapsed = Math.max(0, Math.floor((Date.now() - new Date(data.started_at).getTime()) / 1000));
-    }
-
-    ytFrame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&controls=0&enablejsapi=1&rel=0&start=${elapsed}`;
-
-    if (this.onAudioConnected) {
-      this.onAudioConnected(data);
     }
   }
 

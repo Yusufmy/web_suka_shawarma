@@ -175,9 +175,18 @@ export default function UploadLink({
       setLoadingAudio(true);
       setLoadingMessage("Mengekstrak audio dari link...");
 
+      // Bersihkan parameter playlist / radio tracker YouTube
+      let cleanUrl = targetUrl;
+      const ytMatch = targetUrl.match(
+        /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+      );
+      if (ytMatch && ytMatch[1]) {
+        cleanUrl = `https://www.youtube.com/watch?v=${ytMatch[1]}`;
+      }
+
       // 1. Ekstrak audio di server via yt-dlp
-      console.log("⚡ Mengekstrak audio dari URL:", targetUrl);
-      const res = await audio.importUrl(targetUrl);
+      console.log("⚡ Mengekstrak audio dari URL:", cleanUrl);
+      const res = await audio.importUrl(cleanUrl);
       const audioData = res?.data;
 
       if (!audioData || !audioData.url) {

@@ -67,8 +67,8 @@ export default function UploadLink({
       });
     });
 
-    const unsubscribe = WebRTCAudioService.subscribe((state) => {
-      if (!state.isBroadcasting && !state.isLoading) {
+    WebRTCAudioService.setStateListener((state) => {
+      if (state === "stopped" || state === "ended") {
         setIsLive(false);
         setActiveAudioItem(null);
         setPlaybackProgress({ currentTime: 0, duration: 0, percentage: 0 });
@@ -77,7 +77,7 @@ export default function UploadLink({
 
     return () => {
       WebRTCAudioService.setProgressCallback(null);
-      unsubscribe();
+      WebRTCAudioService.setStateListener(null);
     };
   }, []);
 

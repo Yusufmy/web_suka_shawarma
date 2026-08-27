@@ -367,7 +367,7 @@ class PetugasReceiver {
         }
       }
 
-      // Hubungkan ke Web Audio API Analyser untuk visualizer gelombang suara
+      // Hubungkan ke Web Audio API Analyser untuk visualizer gelombang suara & output speaker
       if (this.audioContext && this.analyser) {
         try {
           if (this.audioContext.state === "suspended") {
@@ -375,7 +375,8 @@ class PetugasReceiver {
           }
           const source = this.audioContext.createMediaStreamSource(this.remoteStream);
           source.connect(this.analyser);
-          console.log("📊 Analyser berhasil tersambung ke stream");
+          this.analyser.connect(this.audioContext.destination);
+          console.log("📊 Analyser berhasil tersambung ke stream & audio destination");
         } catch (err) {
           console.warn("Analyser connection error:", err);
         }

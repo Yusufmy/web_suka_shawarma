@@ -69,16 +69,17 @@ export default function PetugasPage() {
       petugasReceiver.initAudio(audioRef.current);
     }
 
-    // 1. Sinyal siaran masuk -> Tampilkan status menyambungkan di waiting screen
+    // 1. Sinyal siaran masuk -> LANGSUNG BERALIH KE TAMPILAN LIVE SEKETIKA
     petugasReceiver.onBroadcastConnecting = (data) => {
-      console.log("🎙️ Event Siaran Dimulai (Menyambungkan audio WebRTC...):", data);
+      console.log("🎙️ Event Siaran Dimulai -> Langsung beralih ke tampilan LIVE:", data);
       setBroadcastData(data);
-      setIsConnectingAudio(true);
+      setIsConnectingAudio(false);
+      setCurrentView("live");
     };
 
-    // 2. Audio track & WebRTC benar-benar terhubung -> Pindah ke LIVE (SAMA SEPERTI APK)
+    // 2. Audio track & WebRTC terhubung
     petugasReceiver.onAudioConnected = (data) => {
-      console.log("🔊 Audio WebRTC benar-benar terhubung! Beralih ke halaman LIVE");
+      console.log("🔊 Audio WebRTC terhubung!");
       setBroadcastData(data);
       setIsConnectingAudio(false);
       setCurrentView("live");
@@ -116,6 +117,9 @@ export default function PetugasPage() {
     }
 
     setCurrentView("waiting");
+
+    // Langsung mulai sesi & cek apakah ada siaran live yang sedang berlangsung
+    petugasReceiver.startSession({ outlet: newOutlet, token: newToken });
   };
 
   // Handle Logout

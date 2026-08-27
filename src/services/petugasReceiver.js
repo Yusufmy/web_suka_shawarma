@@ -107,14 +107,20 @@ class PetugasReceiver {
     }
   }
 
-  // Cek siaran aktif saat app pertama kali dibuka
+  // Cek siaran aktif saat app pertama kali dibuka / setelah login
   async checkActiveBroadcast() {
     if (!this.outlet?.id || this.token === "offline_preview_token") return;
     try {
+      console.log(`🔍 Memeriksa apakah ada siaran live yang sedang berlangsung untuk outlet ${this.outlet.id}...`);
       const activeRes = await petugasService.getActiveBroadcast(this.outlet.id);
       if (activeRes?.active && activeRes?.data) {
-        console.log("📡 Ditemukan siaran yang sedang aktif:", activeRes.data);
-        this.handleBroadcastStarted(activeRes.data);
+        console.log("📡 Ditemukan siaran aktif dari server! Langsung menghubungkan:", activeRes.data);
+        const data = activeRes.data;
+        if (data.type === "upload" || data.audio?.url) {
+          this.handleAudioBroadcastStarted(data);
+        } else {
+          this.handleBroadcastStarted(data);
+        }
       }
     } catch (e) {
       console.warn("Check active broadcast error:", e);
@@ -183,8 +189,13 @@ class PetugasReceiver {
     }
 
     this.currentBroadcast = data;
+    
+    // Beritahu UI untuk LANGSUNG beralih ke layar LIVE seketika
     if (this.onBroadcastConnecting) {
       this.onBroadcastConnecting(data);
+    }
+    if (this.onAudioConnected) {
+      this.onAudioConnected(data);
     }
 
     const roomId = data.rtc_room_id;
@@ -199,18 +210,21 @@ class PetugasReceiver {
 
     this.currentBroadcast = data;
 
+    // Beritahu UI untuk LANGSUNG beralih ke layar LIVE seketika
+    if (this.onBroadcastConnecting) {
+      this.onBroadcastConnecting(data);
+    }
+    if (this.onAudioConnected) {
+      this.onAudioConnected(data);
+    }
+
     if (data.audio?.url && this.audioElement) {
       this.audioElement.srcObject = null;
       this.audioElement.src = data.audio.url;
-      this.audioElement.play().then(() => {
-        if (this.onAudioConnected) {
-          this.onAudioConnected(data);
-        }
-      }).catch((err) => {
+      this.audioElement.volume = 1.0;
+      this.audioElement.muted = false;
+      this.audioElement.play().catch((err) => {
         console.warn("Autoplay audio file terblokir:", err);
-        if (this.onAudioConnected) {
-          this.onAudioConnected(data);
-        }
       });
     }
   }

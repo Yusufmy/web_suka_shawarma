@@ -6,6 +6,9 @@ import {
   Play,
   Pause,
   Loader2,
+  Link2,
+  X,
+  Sparkles,
 } from "lucide-react";
 
 import {
@@ -80,6 +83,13 @@ export default function UploadAudio({
    */
   const [broadcastStatus, setBroadcastStatus] =
     useState("starting");
+
+  /**
+   * State Modal Import Audio via Link (YouTube / TikTok / dll)
+   */
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importUrl, setImportUrl] = useState("");
+  const [importing, setImporting] = useState(false);
 
   // ============================================================
   // BERITAHU OUTLET KALAU TAB DITUTUP/REFRESH SAAT MASIH BROADCAST
@@ -373,6 +383,36 @@ export default function UploadAudio({
       setUploading(false);
       setUploadProgress(0);
       e.target.value = "";
+    }
+  }
+
+  // ============================================================
+  // IMPORT AUDIO DARI LINK URL (YOUTUBE / TIKTOK / DLL)
+  // ============================================================
+
+  async function handleImportUrl(e) {
+    e?.preventDefault();
+    const cleanUrl = importUrl.trim();
+    if (!cleanUrl) {
+      alert.error("Masukkan link URL video/audio terlebih dahulu.");
+      return;
+    }
+
+    try {
+      setImporting(true);
+      const res = await audio.importUrl(cleanUrl);
+      alert.success(res?.message || "Audio berhasil diekstrak dan disimpan!");
+      setImportUrl("");
+      setImportModalOpen(false);
+      await loadAudios();
+    } catch (err) {
+      const msg =
+        err.response?.data?.message ||
+        err.message ||
+        "Gagal mengekstrak audio dari link tersebut.";
+      alert.error(msg);
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -734,61 +774,91 @@ export default function UploadAudio({
         </div>
 
         {/* ====================================================
-            ADD BUTTON
+            ACTION BUTTONS (IMPORT LINK & UPLOAD FILE)
         ==================================================== */}
 
-        <button
-          type="button"
-          onClick={handleSelectFile}
-          disabled={
-            uploading ||
-            broadcastLoading
-          }
-          className="
-            flex
-            shrink-0
-            items-center
-            gap-2
-            rounded-lg
-            bg-gradient-to-b
-            from-orange-500
-            to-orange-700
-            px-4
-            py-2
-            text-sm
-            font-semibold
-            text-white
-            shadow-lg
-            shadow-orange-900/20
-            transition
-            hover:brightness-110
-            active:scale-[0.98]
-            disabled:cursor-not-allowed
-            disabled:opacity-50
-          "
-        >
+        <div className="flex flex-wrap items-center gap-2">
+          {/* TOMBOL IMPORT DARI LINK */}
+          <button
+            type="button"
+            onClick={() => setImportModalOpen(true)}
+            disabled={uploading || importing || broadcastLoading}
+            className="
+              flex
+              shrink-0
+              items-center
+              gap-2
+              rounded-lg
+              border
+              border-neutral-700
+              bg-neutral-800/80
+              px-3.5
+              py-2
+              text-sm
+              font-medium
+              text-neutral-200
+              shadow-sm
+              transition
+              hover:border-orange-500/60
+              hover:bg-neutral-800
+              hover:text-orange-400
+              active:scale-[0.98]
+              disabled:cursor-not-allowed
+              disabled:opacity-50
+            "
+          >
+            <Link2 size={15} className="text-orange-400" />
+            <span>Import dari Link</span>
+          </button>
 
-          {uploading ? (
-            <>
-              <Loader2
-                size={16}
-                className="animate-spin"
-              />
-              Mengupload {uploadProgress > 0 ? `(${uploadProgress}%)` : "..."}
-            </>
-          ) : (
-
-            <>
-
-              <Plus size={16} />
-
-              Tambah Audio
-
-            </>
-
-          )}
-
-        </button>
+          {/* TOMBOL UPLOAD FILE MP3 */}
+          <button
+            type="button"
+            onClick={handleSelectFile}
+            disabled={
+              uploading ||
+              importing ||
+              broadcastLoading
+            }
+            className="
+              flex
+              shrink-0
+              items-center
+              gap-2
+              rounded-lg
+              bg-gradient-to-b
+              from-orange-500
+              to-orange-700
+              px-4
+              py-2
+              text-sm
+              font-semibold
+              text-white
+              shadow-lg
+              shadow-orange-900/20
+              transition
+              hover:brightness-110
+              active:scale-[0.98]
+              disabled:cursor-not-allowed
+              disabled:opacity-50
+            "
+          >
+            {uploading ? (
+              <>
+                <Loader2
+                  size={16}
+                  className="animate-spin"
+                />
+                Mengupload {uploadProgress > 0 ? `(${uploadProgress}%)` : "..."}
+              </>
+            ) : (
+              <>
+                <Plus size={16} />
+                Tambah Audio
+              </>
+            )}
+          </button>
+        </div>
 
       </div>
 
@@ -1314,6 +1384,102 @@ export default function UploadAudio({
 
           </div>
 
+        </div>
+      )}
+
+      {/* ======================================================
+          MODAL: IMPORT AUDIO DARI LINK URL (YT / TIKTOK / DLL)
+      ====================================================== */}
+      {importModalOpen && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative w-full max-w-lg rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
+            {/* Header Modal */}
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
+                  <Link2 size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white">
+                    Import Audio dari Link
+                  </h3>
+                  <p className="text-xs text-neutral-400">
+                    YouTube, TikTok, Instagram Reels, SoundCloud, dll.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={importing}
+                onClick={() => {
+                  if (!importing) {
+                    setImportModalOpen(false);
+                    setImportUrl("");
+                  }
+                }}
+                className="rounded-lg p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-white disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form Input */}
+            <form onSubmit={handleImportUrl} className="mt-5 space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-medium text-neutral-300">
+                  Link Video / Audio:
+                </label>
+                <div className="relative">
+                  <input
+                    type="url"
+                    required
+                    disabled={importing}
+                    placeholder="https://www.youtube.com/watch?v=... atau https://vt.tiktok.com/..."
+                    value={importUrl}
+                    onChange={(e) => setImportUrl(e.target.value)}
+                    className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-3 text-sm text-white placeholder-neutral-500 transition focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500 disabled:opacity-60"
+                  />
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-neutral-500">
+                  💡 Server akan otomatis mengekstrak suaranya menjadi file MP3 jernih tanpa iklan dan langsung menyimpannya ke daftar materi siaran.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={importing}
+                  onClick={() => {
+                    setImportModalOpen(false);
+                    setImportUrl("");
+                  }}
+                  className="rounded-lg px-4 py-2 text-xs font-medium text-neutral-400 transition hover:bg-neutral-800 hover:text-white disabled:opacity-50"
+                >
+                  Batal
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={importing || !importUrl.trim()}
+                  className="flex items-center gap-2 rounded-lg bg-gradient-to-b from-orange-500 to-orange-700 px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-orange-900/30 transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {importing ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      <span>Sedang Mengekstrak Audio...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={15} />
+                      <span>Ekstrak & Simpan</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

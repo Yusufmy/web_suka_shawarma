@@ -96,6 +96,22 @@ const audio = {
   },
 
   /**
+   * Import audio dari link URL (YouTube, TikTok, dll)
+   */
+  importUrl: async (url) => {
+    try {
+      const response = await api.post("/audio/import-url", { url });
+      return response.data;
+    } catch (error) {
+      console.error(
+        "❌ Gagal import audio dari URL:",
+        error.response?.data || error
+      );
+      throw error;
+    }
+  },
+
+  /**
    * Delete audio
    */
   delete: async (id) => {

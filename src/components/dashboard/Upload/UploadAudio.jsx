@@ -53,6 +53,7 @@ export default function UploadAudio({
    * Loading upload
    */
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   /**
    * ID audio yang sedang dihapus
@@ -337,77 +338,44 @@ export default function UploadAudio({
   // ============================================================
 
   async function handleFileChange(e) {
-
-    const files = Array.from(
-      e.target.files || []
-    );
+    const files = Array.from(e.target.files || []);
 
     if (!files.length) {
       return;
     }
 
     try {
-
       setUploading(true);
+      setUploadProgress(0);
 
       for (const file of files) {
+        const response = await audio.upload(file, (progress) => {
+          setUploadProgress(progress);
+        });
 
-        console.log(
-          "📤 Upload audio:",
-          {
-            name: file.name,
-            type: file.type,
-            size: file.size,
-          }
-        );
-
-        // ------------------------------------------------------
-        // UPLOAD
-        // ------------------------------------------------------
-
-        const response =
-          await audio.upload(file);
-
-        console.log(
-          "✅ Upload berhasil:",
-          response
-        );
+        console.log("✅ Upload audio selesai:", response);
       }
 
-      // --------------------------------------------------------
-      // RELOAD DATA
-      // --------------------------------------------------------
-
       await loadAudios();
-      alert.success("File audio berhasil di-upload!");
+      alert.success("File audio berhasil di-upload ke server!");
 
     } catch (error) {
-
-      console.error(
-        "❌ Upload audio gagal:",
-        error.response?.data || error
-      );
+      console.error("❌ Upload audio gagal:", error.response?.data || error);
 
       const status = error.response?.status;
-      const apiMsg = error.response?.data?.message;
+      const apiMsg = error.response?.data?.message || (error.response?.data?.errors?.file?.[0]);
 
       if (status === 413) {
-        alert.error("Ukuran file terlalu besar untuk server (Nginx 413 Payload Too Large).");
+        alert.error("Ukuran file terlalu besar (Nginx 413 Payload Too Large). Konfigurasi client_max_body_size di server perlu dinaikkan.");
       } else if (status === 422) {
-        alert.error(apiMsg || "Validasi gagal: Format audio tidak didukung atau ukuran melebihi batas PHP.");
+        alert.error(apiMsg || "Server menolak file: Batas upload_max_filesize di php.ini server masih 2MB.");
       } else {
         alert.error(apiMsg || "Gagal meng-upload file audio ke server.");
       }
 
     } finally {
-
       setUploading(false);
-
-      /**
-       * Reset input agar file yang sama
-       * bisa dipilih lagi.
-       */
-
+      setUploadProgress(0);
       e.target.value = "";
     }
   }
@@ -790,18 +758,13 @@ export default function UploadAudio({
         >
 
           {uploading ? (
-
             <>
-
               <Loader2
                 size={16}
                 className="animate-spin"
               />
-
-              Mengupload...
-
+              Mengupload {uploadProgress > 0 ? `(${uploadProgress}%)` : "..."}
             </>
-
           ) : (
 
             <>

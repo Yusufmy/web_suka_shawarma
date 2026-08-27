@@ -515,6 +515,24 @@ class WebRTCService {
                 return;
             }
 
+            // Jika peer connection sudah dalam state 'stable' (mis. answer sudah diproses sebelumnya),
+            // abaikan answer duplikat ini agar tidak memicu InvalidStateError.
+            if (peerConnection.signalingState === "stable") {
+                console.log(
+                    `ℹ️ Peer ${peerKey} sudah dalam state 'stable' (answer sudah terpasang), abaikan answer duplikat.`
+                );
+
+                return;
+            }
+
+            if (peerConnection.signalingState !== "have-local-offer") {
+                console.warn(
+                    `⚠️ Peer ${peerKey} signalingState bukan 'have-local-offer' (${peerConnection.signalingState}), abaikan answer.`
+                );
+
+                return;
+            }
+
             console.log(
                 `📥 ANSWER received ← peer ${peerKey}`
             );

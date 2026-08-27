@@ -224,12 +224,9 @@ class PetugasReceiver {
 
     this.currentBroadcast = data;
     
-    // Beritahu UI untuk LANGSUNG beralih ke layar LIVE seketika
+    // Beritahu UI bahwa sedang menghubungkan audio (tetap di standby dulu sampai audio masuk)
     if (this.onBroadcastConnecting) {
       this.onBroadcastConnecting(data);
-    }
-    if (this.onAudioConnected) {
-      this.onAudioConnected(data);
     }
 
     const roomId = data.rtc_room_id;
@@ -249,12 +246,9 @@ class PetugasReceiver {
 
     this.currentBroadcast = data;
 
-    // Beritahu UI untuk LANGSUNG beralih ke layar LIVE seketika
+    // Beritahu UI bahwa sedang menghubungkan audio
     if (this.onBroadcastConnecting) {
       this.onBroadcastConnecting(data);
-    }
-    if (this.onAudioConnected) {
-      this.onAudioConnected(data);
     }
 
     if (data.audio?.url && this.audioElement) {
@@ -269,9 +263,22 @@ class PetugasReceiver {
         this.handleBroadcastEnded({ room_id: data.rtc_room_id || data.room_id });
       };
 
-      this.audioElement.play().catch((err) => {
-        console.warn("Autoplay audio file terblokir:", err);
-      });
+      const playPromise = this.audioElement.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log("▶️ Audio file berhasil diputar di speaker -> Pindah ke tampilan LIVE");
+            if (this.onAudioConnected && this.currentBroadcast) {
+              this.onAudioConnected(this.currentBroadcast);
+            }
+          })
+          .catch((err) => {
+            console.warn("Autoplay audio file terblokir:", err);
+            if (this.onAudioConnected && this.currentBroadcast) {
+              this.onAudioConnected(this.currentBroadcast);
+            }
+          });
+      }
     }
   }
 
@@ -432,10 +439,16 @@ class PetugasReceiver {
         if (playPromise !== undefined) {
           playPromise
             .then(() => {
-              console.log("▶️ Audio streaming berhasil diputar di speaker!");
+              console.log("▶️ Audio streaming berhasil diputar di speaker! -> Beralih ke tampilan LIVE");
+              if (this.onAudioConnected && this.currentBroadcast) {
+                this.onAudioConnected(this.currentBroadcast);
+              }
             })
             .catch((err) => {
               console.warn("⚠️ Autoplay dicegah browser, butuh interaksi klik:", err);
+              if (this.onAudioConnected && this.currentBroadcast) {
+                this.onAudioConnected(this.currentBroadcast);
+              }
             });
         }
       }
@@ -455,11 +468,6 @@ class PetugasReceiver {
         } catch (err) {
           console.warn("Analyser connection error:", err);
         }
-      }
-
-      // HANYA PINDAH KE HALAMAN LIVE KETIKA AUDIO TRACK BENAR-BENAR DITERIMA
-      if (this.onAudioConnected && this.currentBroadcast) {
-        this.onAudioConnected(this.currentBroadcast);
       }
     };
 

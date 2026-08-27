@@ -70,17 +70,16 @@ export default function PetugasPage() {
       petugasReceiver.initAudio(audioRef.current);
     }
 
-    // 1. Sinyal siaran masuk -> LANGSUNG BERALIH KE TAMPILAN LIVE SEKETIKA
+    // 1. Sinyal siaran masuk -> Tampilkan status menghubungkan audio di latar belakang (tetap di standby)
     petugasReceiver.onBroadcastConnecting = (data) => {
-      console.log("🎙️ Event Siaran Dimulai -> Langsung beralih ke tampilan LIVE:", data);
+      console.log("🎙️ Sinyal Siaran Masuk -> Menghubungkan audio di latar belakang...", data);
       setBroadcastData(data);
-      setIsConnectingAudio(false);
-      setCurrentView("live");
+      setIsConnectingAudio(true);
     };
 
-    // 2. Audio track & WebRTC terhubung
+    // 2. Audio track & WebRTC SUDAH BERSUARA di speaker -> Baru beralih ke tampilan LIVE
     petugasReceiver.onAudioConnected = (data) => {
-      console.log("🔊 Audio WebRTC terhubung!");
+      console.log("🔊 Audio WebRTC SUDAH BERSUARA -> Beralih ke tampilan LIVE!");
       setBroadcastData(data);
       setIsConnectingAudio(false);
       setCurrentView("live");

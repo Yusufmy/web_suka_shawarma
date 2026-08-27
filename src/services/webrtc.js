@@ -235,11 +235,28 @@ class WebRTCService {
         }
 
         // Jika peer ini mengirim sinyal ready baru (misal karena refresh halaman atau reconnect),
-        // tutup koneksi PeerConnection lama dan buatkan Offer baru yang fresh!
+        // cek apakah koneksi lama masih aktif atau sedang dalam proses negosiasi.
         if (this.peerConnections.has(peerKey) || (!deviceId && (this.peerConnections.has(id) || this.peerConnections.has(String(outletId))))) {
             const oldPc = this.peerConnections.get(peerKey) || this.peerConnections.get(id) || this.peerConnections.get(String(outletId));
+            
+            // JIKA KONEKSI SUDAH CONNECTED ATAU SEDANG CONNECTING, JANGAN DIRESET!
+            if (oldPc && (oldPc.connectionState === "connected" || oldPc.connectionState === "connecting")) {
+                console.log(
+                    `ℹ️ Peer ${peerKey} sudah dalam status connectionState='${oldPc.connectionState}', abaikan sinyal ready berulang.`
+                );
+                return;
+            }
+            
+            // JIKA OFFER BARU SAJA DIKIRIM DAN SEDANG MENUNGGU ANSWER, JANGAN DIRESET!
+            if (oldPc && oldPc.signalingState === "have-local-offer") {
+                console.log(
+                    `ℹ️ Peer ${peerKey} sudah dikirimkan offer dan sedang menunggu answer (signalingState: have-local-offer), abaikan sinyal ready berulang.`
+                );
+                return;
+            }
+
             console.log(
-                `🔄 Peer ${peerKey} mengirim sinyal ready baru (refresh/reconnect, state: ${oldPc?.connectionState}). Mereset koneksi lama & membuat Offer baru...`
+                `🔄 Peer ${peerKey} koneksi lama terputus/perlu dibuat ulang (state: ${oldPc?.connectionState}, signaling: ${oldPc?.signalingState}). Mereset koneksi lama & membuat Offer baru...`
             );
             if (oldPc) {
                 try {

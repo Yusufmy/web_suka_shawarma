@@ -543,34 +543,36 @@ export default function OperatorDashboard() {
         // OPERATOR -> OUTLET
         // ========================================================
 
-        channel.listen(
-            ".webrtc.answer",
-            async (data) => {
-                console.log(
-                    "📥 WEBRTC ANSWER:",
-                    data
+        const handleIncomingAnswer = async (data) => {
+            console.log(
+                "📥 WEBRTC ANSWER:",
+                data
+            );
+
+            console.log(
+                "📦 ANSWER DATA:",
+                data?.answer
+            );
+
+            if (!data?.outlet_id) {
+                console.warn(
+                    "⚠️ Answer tidak memiliki outlet_id"
                 );
 
-                console.log(
-                    "📦 ANSWER DATA:",
-                    data.answer
-                );
-
-                if (!data?.outlet_id) {
-                    console.warn(
-                        "⚠️ Answer tidak memiliki outlet_id"
-                    );
-
-                    return;
-                }
-
-                await webrtc.handleAnswer(
-                    data.outlet_id,
-                    data.answer,
-                    data.device_id || null
-                );
+                return;
             }
-        );
+
+            await webrtc.handleAnswer(
+                data.outlet_id,
+                data.answer,
+                data.device_id || null
+            );
+        };
+
+        channel.listen(".webrtc.answer", handleIncomingAnswer);
+        channel.listen("webrtc.answer", handleIncomingAnswer);
+        channel.listen(".App\\Events\\WebRTCAnswer", handleIncomingAnswer);
+        channel.listen("App\\Events\\WebRTCAnswer", handleIncomingAnswer);
 
         // ========================================================
         // FLUTTER -> WEB
@@ -584,29 +586,31 @@ export default function OperatorDashboard() {
         // sini tidak perlu lagi filter "punya sendiri".
         // ========================================================
 
-        channel.listen(
-            ".webrtc.ice",
-            async (data) => {
-                console.log(
-                    "🧊 WEBRTC ICE RECEIVED:",
-                    data
+        const handleIncomingIce = async (data) => {
+            console.log(
+                "🧊 WEBRTC ICE RECEIVED:",
+                data
+            );
+
+            if (!data?.outlet_id) {
+                console.warn(
+                    "⚠️ ICE tidak memiliki outlet_id"
                 );
 
-                if (!data?.outlet_id) {
-                    console.warn(
-                        "⚠️ ICE tidak memiliki outlet_id"
-                    );
-
-                    return;
-                }
-
-                await webrtc.handleIceCandidate(
-                    data.outlet_id,
-                    data.candidate,
-                    data.device_id || null
-                );
+                return;
             }
-        );
+
+            await webrtc.handleIceCandidate(
+                data.outlet_id,
+                data.candidate,
+                data.device_id || null
+            );
+        };
+
+        channel.listen(".webrtc.ice", handleIncomingIce);
+        channel.listen("webrtc.ice", handleIncomingIce);
+        channel.listen(".App\\Events\\WebRTCIceCandidate", handleIncomingIce);
+        channel.listen("App\\Events\\WebRTCIceCandidate", handleIncomingIce);
 
         // ========================================================
         // FLUTTER -> WEB

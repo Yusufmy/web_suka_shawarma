@@ -369,10 +369,17 @@ class PetugasReceiver {
     // Listen Operator ICE Candidate
     this.roomChannel.listen(".webrtc.operator.ice", onIceReceived);
     this.roomChannel.listen("webrtc.operator.ice", onIceReceived);
+    this.roomChannel.listen(".App\\Events\\WebRTCOperatorToOutletIce", onIceReceived);
+    this.roomChannel.listen("App\\Events\\WebRTCOperatorToOutletIce", onIceReceived);
     this.roomChannel.listen(".App\\Events\\WebRTCOperatorIceCandidate", onIceReceived);
 
     // 3. FUNGSI UNTUK KIRIM SINYAL RECEIVER READY
+    let hasSentInitialReady = false;
     const sendReadySignal = async () => {
+      if (this.peerConnection && this.peerConnection.remoteDescription) {
+        this.clearReadyRetry();
+        return;
+      }
       try {
         console.log(`📤 Mengirim sinyal receiver ready (Room: ${roomId}, Outlet: ${outletId}, Device: ${myDeviceId})...`);
         await petugasService.sendReceiverReady({
@@ -387,23 +394,29 @@ class PetugasReceiver {
 
     // 4. Kirim sinyal ready begitu channel tersubscribe
     this.roomChannel.subscribed(async () => {
-      console.log(`✅ WebRTC Room Channel ${roomChannelName} subscribed!`);
-      await sendReadySignal();
+      if (!hasSentInitialReady) {
+        hasSentInitialReady = true;
+        console.log(`✅ WebRTC Room Channel ${roomChannelName} subscribed!`);
+        await sendReadySignal();
+      }
     });
 
-    // Fallback: Kirim sinyal ready langsung & ulangi tiap 1.5 detik jika offer belum datang
-    let retryCount = 0;
-    await sendReadySignal();
+    // Fallback: Kirim sekali jika channel sudah langsung aktif
+    if (!hasSentInitialReady) {
+      hasSentInitialReady = true;
+      sendReadySignal();
+    }
 
+    let retryCount = 0;
     this.readyRetryTimer = setInterval(async () => {
       retryCount++;
-      if (retryCount > 6 || (this.peerConnection && this.peerConnection.remoteDescription)) {
+      if (retryCount > 4 || (this.peerConnection && this.peerConnection.remoteDescription)) {
         this.clearReadyRetry();
         return;
       }
       console.log(`🔄 Retry receiver ready signal ke-${retryCount}...`);
       await sendReadySignal();
-    }, 1500);
+    }, 2500);
   }
 
   async setupPeerConnection(roomId, broadcastId) {

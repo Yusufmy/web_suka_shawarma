@@ -216,6 +216,13 @@ export default function PetugasWaiting({
             <span>Simulasikan Siaran Masuk (Demo Preview)</span>
           </button>
         </div>
+
+        {/* Version Footer */}
+        <div className="mt-3 text-center">
+          <p className="text-[10px] text-neutral-600 font-mono">
+            Radio Suka Shawarma v1.0.0
+          </p>
+        </div>
       </div>
     </div>
   );

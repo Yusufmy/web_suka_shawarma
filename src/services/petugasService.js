@@ -1,4 +1,5 @@
 import axios from "axios";
+import { APP_VERSION } from "../config/version";
 
 export const getApiBaseUrl = () => {
   try {
@@ -67,14 +68,30 @@ export const petugasService = {
       name,
       device_info: {
         device_id: deviceId,
-        model: "Web Browser - Atasan",
+        model: "Web Browser - Petugas",
         os: navigator.userAgent.substring(0, 100),
-        app_version: "1.0.0",
+        app_version: APP_VERSION,
       },
     };
 
     const response = await client.post("/auth/outlet-connect", payload);
     return response.data;
+  },
+
+  // 2.1 Update Presence status dengan app_version
+  async updatePresence(outletId, presence = "foreground") {
+    try {
+      const client = getClient();
+      const response = await client.post("/outlet/presence", {
+        outlet_id: outletId,
+        presence,
+        app_version: APP_VERSION,
+      });
+      return response.data;
+    } catch (error) {
+      console.warn("Presence update error:", error);
+      return null;
+    }
   },
 
   // 3. Logout outlet

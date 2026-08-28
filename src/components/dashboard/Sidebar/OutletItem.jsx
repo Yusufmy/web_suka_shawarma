@@ -120,9 +120,14 @@ export default function OutletItem({
           )}
         </p>
 
-        <p className="truncate text-[11px] text-neutral-500">
-          {outlet.code}
-          {" · "}
+        <p className="flex items-center gap-1.5 truncate text-[11px] text-neutral-500">
+          <span>{outlet.code}</span>
+          {outlet.app_version && (
+            <span className="rounded bg-neutral-800/80 px-1 py-0.5 text-[9px] font-mono text-neutral-400">
+              v{outlet.app_version}
+            </span>
+          )}
+          <span>·</span>
           <span className={presence.textClass}>
             {presence.label}
           </span>

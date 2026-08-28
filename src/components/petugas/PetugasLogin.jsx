@@ -257,13 +257,14 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
             <ShieldCheck className="h-4 w-4 text-emerald-500" />
             <span>Koneksi Aman</span>
           </div>
+          <span className="font-mono text-[10px] text-neutral-600">v1.0.0</span>
           <button
             type="button"
             onClick={handleBypassOffline}
             className="text-neutral-500 hover:text-orange-400 transition-colors flex items-center gap-1"
           >
             <Sparkles className="h-3 w-3 text-orange-400" />
-            <span>Mode Standby Demo</span>
+            <span>Mode Demo</span>
           </button>
         </div>
       </div>

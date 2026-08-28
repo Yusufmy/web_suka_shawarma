@@ -1,4 +1,5 @@
 import { Users, Loader2, X } from "lucide-react";
+import { SYSTEM_VERSION } from "../../../config/version";
 
 import OutletSearch from "./OutletSearch";
 import OutletList from "./OutletList";
@@ -110,6 +111,13 @@ export default function OutletSidebar({
                     />
                 )}
 
+            </div>
+
+            {/* Version Footer */}
+            <div className="border-t border-neutral-800/80 px-4 py-2.5 text-center">
+                <p className="text-[10px] text-neutral-600 font-mono">
+                    Radio Suka Shawarma v{SYSTEM_VERSION}
+                </p>
             </div>
 
             </aside>

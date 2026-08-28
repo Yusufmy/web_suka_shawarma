@@ -148,6 +148,38 @@ class WebRTCAudioService {
             }
         );
 
+        this.channel.listen(
+            ".audio.webrtc.receiver-ready",
+            async (data) => {
+                const outletId = Number(data.outlet_id);
+                console.log(
+                    `📡 Outlet ${outletId} melaporkan siap menerima audio stream (receiver-ready / reconnect)...`
+                );
+
+                const isTargeted =
+                    !this.outlets ||
+                    this.outlets.length === 0 ||
+                    this.outlets.some((o) => Number(o.id) === outletId);
+
+                if (!isTargeted) {
+                    console.log(`ℹ️ Outlet ${outletId} bukan target audio broadcast saat ini, abaikan.`);
+                    return;
+                }
+
+                const outlet =
+                    this.outlets.find((o) => Number(o.id) === outletId) || {
+                        id: outletId,
+                        name: `Outlet ${outletId}`,
+                    };
+
+                try {
+                    await this.createConnectionForOutlet(outlet);
+                } catch (e) {
+                    console.error(`❌ Gagal merespon receiver-ready outlet ${outletId}:`, e);
+                }
+            }
+        );
+
         console.log(
             "📡 Subscribed to channel:",
             channelName
@@ -675,6 +707,31 @@ class WebRTCAudioService {
                 outlet.name
             );
             console.log("====================================");
+
+            // ====================================================
+            // CLEANUP KONEKSI LAMA JIKA ADA (RECONNECT / RE-OFFER)
+            // ====================================================
+
+            if (this.peerConnections.has(outletId)) {
+                const oldPc = this.peerConnections.get(outletId);
+                try {
+                    oldPc.onicecandidate = null;
+                    oldPc.onconnectionstatechange = null;
+                    oldPc.oniceconnectionstatechange = null;
+                    oldPc.close();
+                } catch (e) {}
+                this.peerConnections.delete(outletId);
+                this.pendingRemoteIce.delete(outletId);
+            }
+
+            if (this.outletAudio.has(outletId)) {
+                const oldAudio = this.outletAudio.get(outletId);
+                try {
+                    oldAudio.audioElement?.pause();
+                    oldAudio.audioContext?.close();
+                } catch (e) {}
+                this.outletAudio.delete(outletId);
+            }
 
             // ====================================================
             // AUDIO PIPELINE MILIK OUTLET INI

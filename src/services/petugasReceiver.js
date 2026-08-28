@@ -308,6 +308,25 @@ class PetugasReceiver {
     channel.listen("audio.broadcast.ended", (data) => {
       this.handleBroadcastEnded(data);
     });
+
+    // 5. Reset Device & Restart Background dari Operator Pusat
+    const handleResetCommand = (data) => {
+      if (!data) return;
+      const targetId = data.outlet_id;
+      if (!targetId || String(targetId) === String(this.outlet?.id)) {
+        console.log("🔄 Perintah Reset Device / Restart Background diterima dari Operator Pusat:", data);
+        if (this.currentBroadcast) {
+          this.handleBroadcastEnded(data);
+        }
+        if (this.outlet?.id) {
+          petugasService.updatePresence(this.outlet.id, "foreground");
+        }
+      }
+    };
+
+    channel.listen(".outlet.reset", handleResetCommand);
+    channel.listen("outlet.reset", handleResetCommand);
+    channel.listen("OutletResetRequested", handleResetCommand);
   }
 
   // Cek apakah outlet ini ditargetkan siaran

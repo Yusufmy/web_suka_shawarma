@@ -207,15 +207,16 @@ export default function OutletCard({ outlet, onEdit, onDelete, onResetDevice }) 
         </div>
       </div>
 
-      {/* Footer Reset Device */}
+      {/* Footer Reset Device & Restart Background */}
       {installed && (
         <button
           type="button"
           onClick={() => onResetDevice(outlet)}
-          className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl border border-neutral-800/80 bg-neutral-950/40 py-2 text-[11px] font-medium text-neutral-400 transition hover:border-amber-500/40 hover:bg-neutral-800 hover:text-amber-400 active:scale-98"
+          title="Reset perangkat & matikan lalu nyalakan ulang background service di aplikasi outlet"
+          className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl border border-neutral-800/80 bg-neutral-950/40 py-2 text-[11px] font-semibold text-neutral-300 transition hover:border-orange-500/50 hover:bg-orange-500/10 hover:text-orange-300 active:scale-98"
         >
-          <RefreshCw size={12} />
-          <span>Reset Device</span>
+          <RefreshCw size={12} className="text-orange-400" />
+          <span>Reset & Restart Background</span>
         </button>
       )}
 

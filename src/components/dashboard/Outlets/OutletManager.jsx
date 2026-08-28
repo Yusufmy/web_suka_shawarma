@@ -155,14 +155,18 @@ export default function OutletManager() {
   }
 
   // ============================================================
-  // RESET DEVICE
+  // RESET DEVICE & RESTART BACKGROUND
+  //
+  // Lepas paksa pairing device outlet dan kirim sinyal WebSocket/FCM
+  // agar background service di aplikasi outlet dihentikan lalu
+  // dinyalakan ulang (restart).
   // ============================================================
 
   async function handleResetDevice(outletItem) {
     const confirmed = window.confirm(
-      `Reset device outlet "${outletItem.name}"? ` +
-        `Device yang sedang login di outlet ini akan terputus, ` +
-        `dan device baru bisa login menggantikannya.`
+      `Reset perangkat & nyalakan ulang background "${outletItem.name}"?\n\n` +
+        `• Sinyal restart background akan dikirim ke aplikasi outlet.\n` +
+        `• Slot koneksi akan disegarkan agar device dapat terhubung kembali secara lancar.`
     );
 
     if (!confirmed) {
@@ -172,7 +176,7 @@ export default function OutletManager() {
     try {
       await outlet.resetDevice(outletItem.id);
 
-      alert.success("Device outlet berhasil direset");
+      alert.success("Perangkat direset & sinyal restart background telah dikirim!");
 
       await fetchOutlets(false);
     } catch (error) {

@@ -210,10 +210,11 @@ class PlaybackCaptureService {
         }
         this.lastReadyTimestamps.set(id, now);
 
-        const outlet = this.outlets.find((o) => Number(o.id) === id);
+        let outlet = this.outlets.find((o) => Number(o.id) === id);
         if (!outlet) {
-            console.warn(`⚠️ Outlet ${id} ready tapi bukan target di room ini`);
-            return;
+            outlet = { id: id, name: `Outlet ${id}` };
+            this.outlets.push(outlet);
+            console.log(`➕ Outlet ${id} otomatis didaftarkan & dihubungkan ke siaran capture yang sedang berlangsung`);
         }
 
         console.log(`🔄 Menyiapkan Offer WebRTC baru untuk outlet ${id}...`);

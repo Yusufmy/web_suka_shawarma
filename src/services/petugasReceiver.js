@@ -482,10 +482,24 @@ class PetugasReceiver {
       this.audioElement.play().then(() => {
         if (this.outlet?.id) {
           petugasService.updatePresence(this.outlet.id, "foreground");
+          const roomId = data.rtc_room_id || data.room_id;
+          if (roomId) {
+            petugasService.sendReceiverReady({
+              roomId,
+              outletId: this.outlet.id,
+              isAudioRoom: true,
+            }).catch(() => {});
+          }
         }
       }).catch((err) => {
         console.warn("Autoplay audio file terblokir (butuh klik user):", err);
       });
+
+      // Bergabung juga ke room WebRTC agar status connected tersinkronisasi ke dashboard operator
+      const roomId = data.rtc_room_id || data.room_id;
+      if (roomId) {
+        this.joinWebRTCRoom(roomId, data.broadcast_id || data.id);
+      }
     } else {
       // SIARAN WEBRTC PLAYBACK CAPTURE (YouTube / Web Tab Audio)
       const roomId = data.rtc_room_id || data.room_id;

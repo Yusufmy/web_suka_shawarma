@@ -8,7 +8,7 @@ const DEFAULT_LOCAL_WS_PORT = 8080;
 
 const PROD_API_URL = "https://api-radio.sukashawarma.com/api";
 const PROD_WS_HOST = "api-radio.sukashawarma.com";
-const PROD_WS_PORT = 8080;
+const PROD_WS_PORT = 443;
 const REVERB_KEY = import.meta.env.VITE_REVERB_APP_KEY || "0nffv9ardjj41sjnlivb";
 
 /**

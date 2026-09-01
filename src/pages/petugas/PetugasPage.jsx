@@ -137,16 +137,6 @@ export default function PetugasPage() {
     setCurrentView("login");
   };
 
-  // Demo Trigger
-  const handleTriggerDemoLive = () => {
-    setBroadcastData({
-      type: "live",
-      rtc_room_id: "demo_room_123",
-      started_at: new Date().toISOString(),
-    });
-    setCurrentView("live");
-  };
-
   const handleStopLive = () => {
     setBroadcastData(null);
     setIsConnectingAudio(false);
@@ -174,7 +164,6 @@ export default function PetugasPage() {
             outlet={outlet}
             volume={volume}
             onVolumeChange={setVolume}
-            onTriggerDemoLive={handleTriggerDemoLive}
             onLogout={handleLogout}
             wsConnected={petugasReceiver.isListening}
             isConnectingAudio={isConnectingAudio}

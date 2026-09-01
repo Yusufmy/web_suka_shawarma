@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   AlertCircle,
 } from "lucide-react";
-import { SYSTEM_VERSION } from "../../../config/version";
+import { SYSTEM_VERSION, isVersionUpToDate, isVersionOutdated } from "../../../config/version";
 
 // Bahasa manusia untuk presence, sama seperti OutletItem.jsx di
 // sidebar - biar konsisten di seluruh dashboard.
@@ -80,8 +80,8 @@ export default function OutletCard({ outlet, onEdit, onDelete, onResetDevice }) 
   const isAndroidClient = device?.os?.toLowerCase().includes("android");
 
   // Status kecocokan versi aplikasi outlet dengan versi sistem saat ini
-  const isUpToDate = appVersion && appVersion === SYSTEM_VERSION;
-  const isOutdated = appVersion && appVersion !== SYSTEM_VERSION;
+  const isUpToDate = isVersionUpToDate(appVersion, SYSTEM_VERSION);
+  const isOutdated = isVersionOutdated(appVersion, SYSTEM_VERSION);
 
   return (
     <div className="flex flex-col justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/90 p-4.5 shadow-lg transition-all hover:border-neutral-700">

@@ -8,7 +8,6 @@ import {
   AlertCircle,
   Settings,
   Server,
-  Sparkles
 } from "lucide-react";
 import petugasService, { getApiBaseUrl, setApiBaseUrl } from "../../services/petugasService";
 
@@ -85,19 +84,6 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
     }
   };
 
-  // Masuk mode preview / offline tanpa API
-  const handleBypassOffline = () => {
-    const name = outletName.trim() || "Outlet Pengawas (Mode Standby)";
-    onLoginSuccess({
-      token: "offline_preview_token",
-      outlet: {
-        id: 999,
-        name: name,
-        code: "OTL-WEB",
-      },
-    });
-  };
-
   return (
     <div className="w-full max-w-md">
       {/* Brand Header */}
@@ -142,14 +128,6 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
                 >
                   Ubah URL API Server
                 </button>
-                <span>&bull;</span>
-                <button
-                  type="button"
-                  onClick={handleBypassOffline}
-                  className="underline hover:text-amber-300 text-amber-400 font-bold"
-                >
-                  Masuk Mode Standby (Bypass API)
-                </button>
               </div>
             </div>
           )}
@@ -188,10 +166,10 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
                   <div className="flex gap-1.5 text-[10px]">
                     <button
                       type="button"
-                      onClick={() => setApiUrl("http://localhost:8000/api")}
+                      onClick={() => setApiUrl("http://100.120.244.13:8000/api")}
                       className="text-neutral-400 hover:text-white underline"
                     >
-                      Local :8000
+                      IP :8000
                     </button>
                     <span>|</span>
                     <button
@@ -258,14 +236,6 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
             <span>Koneksi Aman</span>
           </div>
           <span className="font-mono text-[10px] text-neutral-600">v1.0.0</span>
-          <button
-            type="button"
-            onClick={handleBypassOffline}
-            className="text-neutral-500 hover:text-orange-400 transition-colors flex items-center gap-1"
-          >
-            <Sparkles className="h-3 w-3 text-orange-400" />
-            <span>Mode Demo</span>
-          </button>
         </div>
       </div>
     </div>

@@ -1,7 +1,10 @@
 import axios from "axios";
+import { getApiBaseUrl } from "../config/app_config";
+
+export const API_BASE_URL = getApiBaseUrl();
 
 const api = axios.create({
-    baseURL: "https://api-radio.sukashawarma.com/api",
+    baseURL: API_BASE_URL,
     headers: {
         Accept: "application/json",
     },

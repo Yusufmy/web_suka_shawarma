@@ -1,6 +1,7 @@
 import axios from "axios";
+import { API_BASE_URL } from "./api";
 
-const API_URL = "https://api-radio.sukashawarma.com/api";
+const API_URL = API_BASE_URL;
 
 const DEFAULT_ICE_SERVERS = [
     {
@@ -176,12 +177,62 @@ class WebRTCService {
             const track = this.localStream.getAudioTracks()[0];
             console.log("✅ Microphone obtained:", track.label);
 
+            // Inisialisasi Web Audio Context untuk kontrol volume & visualizer audio riil
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                this.audioContext = new AudioCtx();
+                this.sourceNode = this.audioContext.createMediaStreamSource(this.localStream);
+                this.outletGainNodes = new Map();
+                if (!this.outletVolumes) {
+                    this.outletVolumes = new Map();
+                }
+
+                this.analyser = this.audioContext.createAnalyser();
+                this.analyser.fftSize = 128;
+                this.analyser.smoothingTimeConstant = 0.6;
+                this.sourceNode.connect(this.analyser);
+                this.freqDataArray = new Uint8Array(this.analyser.frequencyBinCount);
+
+                console.log("🎚️ Web Audio Context & Real-time Analyser live mic diinisialisasi");
+            } catch (e) {
+                console.warn("⚠️ Gagal inisialisasi AudioContext live mic:", e);
+            }
+
             return true;
         } catch (error) {
             console.error("❌ FAILED STARTING WEBRTC:", error);
             await this.stop();
             throw error;
         }
+    }
+
+    // Mendapatkan level audio riil dari mikrofon (tinggi bar 6px sampai 48px)
+    getAudioLevels(numBars = 24) {
+        if (!this.analyser || !this.localStream || !this.freqDataArray) {
+            return Array(numBars).fill(6);
+        }
+
+        this.analyser.getByteFrequencyData(this.freqDataArray);
+
+        const levels = [];
+        const binSize = Math.max(1, Math.floor(this.freqDataArray.length / numBars));
+
+        for (let i = 0; i < numBars; i++) {
+            let sum = 0;
+            const start = i * binSize;
+            const end = Math.min(start + binSize, this.freqDataArray.length);
+
+            for (let j = start; j < end; j++) {
+                sum += this.freqDataArray[j];
+            }
+
+            const avg = sum / (end - start || 1); // 0 .. 255
+            // Minimal 6px saat hening, naik hingga 48px saat bersuara kencang
+            const height = Math.round(6 + (avg / 255) * 42);
+            levels.push(height);
+        }
+
+        return levels;
     }
 
     // ============================================================
@@ -334,17 +385,40 @@ class WebRTCService {
             }
 
             // ------------------------------------------------------
-            // ADD MICROPHONE TRACK (stream yang sama dipakai
-            // bersama, WebRTC mendukung 1 track dipakai di banyak
-            // PeerConnection)
+            // ADD MICROPHONE TRACK DENGAN KONTROL GAIN PER OUTLET
             // ------------------------------------------------------
 
-            this.localStream
+            let streamToSend = this.localStream;
+            if (this.audioContext && this.sourceNode) {
+                try {
+                    const outletGain = this.audioContext.createGain();
+                    const currentVol = this.outletVolumes?.has(id)
+                        ? this.outletVolumes.get(id)
+                        : (this.masterVolume ?? 1);
+                    outletGain.gain.setValueAtTime(currentVol, this.audioContext.currentTime);
+
+                    const outletDest = this.audioContext.createMediaStreamDestination();
+                    this.sourceNode.connect(outletGain);
+                    outletGain.connect(outletDest);
+
+                    this.outletGainNodes.set(peerKey, outletGain);
+                    if (!deviceId) {
+                        this.outletGainNodes.set(id, outletGain);
+                        this.outletGainNodes.set(String(outletId), outletGain);
+                    }
+                    streamToSend = outletDest.stream;
+                    console.log(`🎚️ Live Mic GainNode dibuat untuk peer ${peerKey} (vol: ${currentVol * 100}%)`);
+                } catch (e) {
+                    console.warn(`⚠️ Gagal buat GainNode live mic peer ${peerKey}:`, e);
+                }
+            }
+
+            streamToSend
                 .getTracks()
                 .forEach((track) => {
                     peerConnection.addTrack(
                         track,
-                        this.localStream
+                        streamToSend
                     );
                 });
 
@@ -713,31 +787,8 @@ class WebRTCService {
         }
     }
 
-    // ============================================================
-    // GET LOCAL STREAM
-    // ============================================================
-
     getLocalStream() {
         return this.localStream;
-    }
-
-    // ============================================================
-    // GET PEER CONNECTION (backward compatible)
-    // ============================================================
-
-    getPeerConnection(outletId, deviceId = null) {
-        const id = Number(outletId);
-        if (deviceId) {
-            const key = `${id}_${deviceId}`;
-            if (this.peerConnections.has(key)) {
-                return this.peerConnections.get(key);
-            }
-        }
-        return (
-            this.peerConnections.get(id) ||
-            this.peerConnections.get(String(outletId)) ||
-            null
-        );
     }
 
     // ============================================================
@@ -841,6 +892,22 @@ class WebRTCService {
         }
 
         // ----------------------------------------------------
+        // STOP AUDIO CONTEXT & GAIN NODES
+        // ----------------------------------------------------
+
+        if (this.audioContext) {
+            try {
+                this.audioContext.close();
+            } catch (e) {}
+            this.audioContext = null;
+            this.sourceNode = null;
+        }
+
+        if (this.outletGainNodes) {
+            this.outletGainNodes.clear();
+        }
+
+        // ----------------------------------------------------
         // CLOSE SEMUA PEER CONNECTION
         // ----------------------------------------------------
 
@@ -862,6 +929,36 @@ class WebRTCService {
         console.log(
             "✅ WebRTC stopped"
         );
+    }
+
+    setOutletVolume(outletId, volume) {
+        const vol = Math.max(0, Math.min(100, Number(volume))) / 100;
+        if (!this.outletVolumes) {
+            this.outletVolumes = new Map();
+        }
+
+        if (outletId === "all") {
+            this.masterVolume = vol;
+            if (this.outletGainNodes) {
+                this.outletGainNodes.forEach((gainNode) => {
+                    try {
+                        gainNode.gain.setValueAtTime(vol, this.audioContext?.currentTime || 0);
+                    } catch (e) {}
+                });
+            }
+            console.log(`🔊 Live Mic Master volume WebRTC diubah ke ${vol * 100}%`);
+            return;
+        }
+
+        const id = Number(outletId);
+        this.outletVolumes.set(id, vol);
+        const gainNode = this.outletGainNodes?.get(id) || this.outletGainNodes?.get(String(outletId));
+        if (gainNode) {
+            try {
+                gainNode.gain.setValueAtTime(vol, this.audioContext?.currentTime || 0);
+                console.log(`🔊 Live Mic WebRTC Gain outlet ${id} diubah ke ${vol * 100}%`);
+            } catch (e) {}
+        }
     }
 }
 

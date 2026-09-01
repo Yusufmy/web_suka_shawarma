@@ -109,29 +109,23 @@ export default function PetugasLive({
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Ambil byte frekuensi asli dari Analyser jika ada
+      // Ambil byte frekuensi asli dari Analyser Web Audio
       const freqData = petugasReceiver.getAudioFrequencyData();
-      const hasRealAudio = freqData && freqData.some((val) => val > 5);
-
       const numBars = 36;
       const spacing = canvas.width / numBars;
       const barWidth = spacing * 0.6;
       const centerY = canvas.height / 2;
 
       for (let i = 0; i < numBars; i++) {
-        let rawHeight = 0;
+        let rawHeight = 4;
 
-        if (hasRealAudio) {
-          // Petakan data frekuensi audio riil
+        if (freqData && freqData.length > 0) {
+          // Petakan data frekuensi audio riil per bar
           const dataIdx = Math.floor((i / numBars) * freqData.length);
           const val = freqData[dataIdx] || 0;
-          rawHeight = (val / 255) * (canvas.height * 0.85);
-        } else {
-          // Animasi sinusoidal halus jika suara sedang hening
-          const t = Date.now() * 0.006;
-          const wave1 = Math.sin(t + i * 0.35);
-          const wave2 = Math.cos(t * 1.5 + i * 0.2);
-          rawHeight = (Math.abs(wave1 * wave2) + 0.15) * (canvas.height * 0.7);
+          if (val > 4) {
+            rawHeight = (val / 255) * (canvas.height * 0.88);
+          }
         }
 
         const barHeight = Math.max(

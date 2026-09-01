@@ -55,6 +55,7 @@ export default function OutletItem({
     outlet.status !== "online" && !hasLoggedInDevice;
 
   const presence = presenceInfo(outlet.presence);
+  const isHearing = Boolean(audioPlaying || listeningLive);
 
   return (
     <button
@@ -68,11 +69,12 @@ export default function OutletItem({
       className={`
         mb-1.5 flex w-full items-center
         gap-3 rounded-lg px-3 py-2.5
-        text-left transition
+        text-left transition relative overflow-hidden
 
         ${
-          selected &&
-          targetMode === "specific"
+          isHearing
+            ? "bg-emerald-500/10 border border-emerald-500/30 shadow-sm shadow-emerald-950/20"
+            : selected && targetMode === "specific"
             ? "bg-orange-500/15 ring-1 ring-orange-500/40"
             : "hover:bg-neutral-800"
         }
@@ -85,7 +87,7 @@ export default function OutletItem({
       `}
     >
 
-      {/* Selection */}
+      {/* Selection / Status Dot */}
       {targetMode === "specific" ? (
         selected ? (
           <CheckCircle2
@@ -98,6 +100,11 @@ export default function OutletItem({
             className="flex-shrink-0 text-neutral-600"
           />
         )
+      ) : isHearing ? (
+        <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+        </span>
       ) : (
         <span
           className={`h-2 w-2 flex-shrink-0 rounded-full ${presence.dotClass}`}
@@ -109,12 +116,14 @@ export default function OutletItem({
       <div className="min-w-0 flex-1">
 
         <p className="flex items-center gap-1.5 truncate text-[13px] font-medium text-neutral-100">
-          {outlet.name}
+          <span className={isHearing ? "text-emerald-300 font-semibold" : ""}>
+            {outlet.name}
+          </span>
 
           {audioConfirmed && (
             <ThumbsUp
               size={12}
-              className="flex-shrink-0 text-green-500"
+              className="flex-shrink-0 text-emerald-400"
               title="Outlet konfirmasi suara sudah keluar"
             />
           )}
@@ -128,59 +137,35 @@ export default function OutletItem({
             </span>
           )}
           <span>·</span>
-          <span className={presence.textClass}>
-            {presence.label}
+          <span className={isHearing ? "text-emerald-400 font-medium" : presence.textClass}>
+            {isHearing ? "Sedang Mendengar Siaran" : presence.label}
           </span>
         </p>
 
       </div>
 
-      {/* Status */}
+      {/* Status Badges */}
       <div className="flex flex-shrink-0 flex-col items-end gap-1">
 
-        {outlet.status === "online" ? (
-          outlet.is_busy ? (
-            <span className="flex-shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
-              Ramai
-            </span>
-          ) : (
-            <span className="flex-shrink-0 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-semibold text-green-400">
-              Sepi
-            </span>
-          )
-        ) : (
-          <WifiOff
-            size={13}
-            className="flex-shrink-0 text-neutral-600"
-          />
-        )}
-
-        {/* Audio-file WebRTC connected & sedang mengalir ke outlet
-            ini SEKARANG (otomatis, real-time) - penting untuk
-            outlet yang jaringannya lambat/menyusul, supaya operator
-            tahu outlet itu masih memutar walau outlet lain sudah
-            selesai. */}
+        {/* Audio / YouTube Playback Capture Live */}
         {audioPlaying && (
-          <span className="flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-semibold text-sky-400">
+          <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 shadow-sm animate-pulse">
             <Volume2
-              size={10}
-              className="flex-shrink-0 animate-pulse"
+              size={11}
+              className="flex-shrink-0"
             />
-            Memutar
+            <span>Mendengar</span>
           </span>
         )}
 
-        {/* Siaran LANGSUNG (mic operator) beneran sudah nyambung ke
-            outlet ini SEKARANG lewat WebRTC - ditampilkan terlepas
-            dari status online/offline di atas, karena koneksi WebRTC
-            ini independen dari heartbeat presence outlet. */}
+        {/* Siaran Bicara Langsung (Mic Operator) */}
         {listeningLive && (
-          <span className="flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold text-violet-400">
+          <span className="flex items-center gap-1 rounded-full bg-violet-500/20 border border-violet-500/30 px-2.5 py-0.5 text-[10px] font-bold text-violet-300 shadow-sm animate-pulse">
             <Headphones
-              size={10}
-              className="flex-shrink-0 animate-pulse"
+              size={11}
+              className="flex-shrink-0"
             />
-            Mendengarkan
+            <span>Mendengar</span>
           </span>
         )}
 

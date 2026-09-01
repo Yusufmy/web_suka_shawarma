@@ -1,7 +1,6 @@
 import {
   Link2,
   Play,
-  Pause,
   Video,
   Film,
   Trash2,
@@ -15,12 +14,13 @@ import {
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import alert from "../../../helpers/alert";
-import { startBroadcast, endBroadcast } from "../../../services/broadcast";
+import PlaybackCaptureService from "../../../services/playback_capture_service";
 
 export default function UploadLink({
   targetMode = "all",
   selected = new Set(),
   outlets = [],
+  onOutletAudioStateChange,
 }) {
   const [inputUrl, setInputUrl] = useState("");
   const [activeUrl, setActiveUrl] = useState("");
@@ -28,21 +28,40 @@ export default function UploadLink({
   // Broadcast state
   const [isLive, setIsLive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [broadcastId, setBroadcastId] = useState(null);
-  const [rtcRoomId, setRtcRoomId] = useState(null);
   const [duration, setDuration] = useState(0);
+
+  // Listener state WebRTC capture audio
+  useEffect(() => {
+    PlaybackCaptureService.setStateListener((state) => {
+      if (typeof state === "object" && state !== null) {
+        onOutletAudioStateChange?.(state);
+        return;
+      }
+
+      if (state === "stopped" || state === "ended") {
+        setIsLive(false);
+        setIsConnecting(false);
+        // Reset playing outlet ids saat stop
+        (outlets || []).forEach((o) => {
+          onOutletAudioStateChange?.({ outletId: o.id, state: "closed" });
+        });
+      } else if (state === "playing") {
+        setIsLive(true);
+        setIsConnecting(false);
+      }
+    });
+  }, [onOutletAudioStateChange, outlets]);
 
   // Timer siaran
   useEffect(() => {
-    let interval;
-    if (isLive) {
-      interval = setInterval(() => {
-        setDuration((prev) => prev + 1);
-      }, 1000);
-    } else {
+    if (!isLive) return;
+    let interval = setInterval(() => {
+      setDuration((prev) => prev + 1);
+    }, 1000);
+    return () => {
+      clearInterval(interval);
       setDuration(0);
-    }
-    return () => clearInterval(interval);
+    };
   }, [isLive]);
 
   // Format durasi MM:SS
@@ -85,10 +104,11 @@ export default function UploadLink({
         type: "generic",
         url: url,
       };
-    } catch (e) {
+    } catch {
       return null;
     }
   }, [activeUrl]);
+
 
   const handleApplyUrl = (e) => {
     e?.preventDefault();
@@ -113,18 +133,21 @@ export default function UploadLink({
         setActiveUrl(text.trim());
         alert.success("Link berhasil ditempel dari clipboard!");
       }
-    } catch (e) {
+    } catch {
       alert.error("Tidak dapat mengakses clipboard. Silakan paste manual (Ctrl+V)");
     }
   };
 
   // ============================================================
-  // MULAI SIARKAN YOUTUBE LANGSUNG KE SEMUA OUTLET (1-KLIK)
-  // (Tanpa popup bagikan tab, outlet langsung memutar otomatis!)
+  // MULAI SIARKAN — TAB AUDIO CAPTURE (tanpa yt-dlp / backend)
+  //
+  // 1. Browser minta izin capture audio tab (getDisplayMedia)
+  // 2. User pilih tab ini di popup → audio ter-capture
+  // 3. Stream langsung dikirim via WebRTC ke semua outlet
   // ============================================================
-  const handleStartYouTubeBroadcast = async () => {
-    if (!youtubeData?.videoId) {
-      alert.error("Masukkan link video YouTube terlebih dahulu");
+  const handleStartBroadcast = async () => {
+    if (!activeUrl) {
+      alert.error("Masukkan link video terlebih dahulu");
       return;
     }
 
@@ -145,55 +168,36 @@ export default function UploadLink({
     try {
       setIsConnecting(true);
 
-      console.log("📡 Mendaftarkan siaran YouTube ke backend...");
-      const selectedOutletIds =
-        targetMode === "specific" ? Array.from(selected) : [];
+      const title = youtubeData?.type === "youtube"
+        ? `YouTube (${youtubeData.videoId})`
+        : activeUrl;
 
-      const response = await startBroadcast(targetMode, selectedOutletIds, {
-        type: "youtube",
-        youtube_id: youtubeData.videoId,
+      // Mulai audio capture & streaming WebRTC
+      await PlaybackCaptureService.startCapture({
+        videoTitle: title,
+        outlets: selectedOutlets,
       });
-
-      const broadcast = response?.data || response;
-      const newBroadcastId = broadcast?.id || broadcast?.broadcast_id;
-      const newRtcRoomId = broadcast?.rtc_room_id;
-
-      if (!newBroadcastId) {
-        throw new Error("Gagal mendaftarkan siaran YouTube ke server");
-      }
-
-      setBroadcastId(newBroadcastId);
-      setRtcRoomId(newRtcRoomId);
 
       setIsLive(true);
       setIsConnecting(false);
-      alert.success("Siaran YouTube berhasil mengudara ke semua outlet!");
+      alert.success("Audio video berhasil disiarkan ke seluruh speaker outlet!");
     } catch (error) {
-      console.error("❌ Gagal memulai siaran YouTube:", error);
+      console.error("❌ Gagal memulai siaran audio capture:", error);
       setIsConnecting(false);
       setIsLive(false);
-
-      alert.error(
-        error.response?.data?.message ||
-          error.message ||
-          "Gagal menyiarkan YouTube ke outlet"
-      );
+      alert.error(error.message || "Gagal menyiarkan audio video ke outlet");
     }
   };
 
   // ============================================================
   // HENTIKAN SIARAN
   // ============================================================
-  const handleStopYouTubeBroadcast = async () => {
+  const handleStopBroadcast = async () => {
     try {
-      if (broadcastId) {
-        await endBroadcast(broadcastId);
-      }
-
       setIsLive(false);
-      setBroadcastId(null);
-      setRtcRoomId(null);
-      alert.info("Siaran YouTube telah dihentikan");
+      setIsConnecting(false);
+      await PlaybackCaptureService.stop();
+      alert.info("Siaran audio video telah dihentikan");
     } catch (error) {
       console.error("Gagal menghentikan siaran:", error);
     }
@@ -347,30 +351,49 @@ export default function UploadLink({
                     PANEL SIARKAN SUARA KE SEMUA OUTLET
                 ============================================== */}
                 <div className="rounded-xl border border-neutral-800 bg-neutral-950/90 p-4 space-y-3">
+
+                  {/* Petunjuk cara capture — hanya tampil saat belum live */}
+                  {!isLive && (
+                    <div className="flex items-start gap-2 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-2.5 text-xs text-orange-300">
+                      <span className="mt-0.5 shrink-0 text-orange-400">💡</span>
+                      <span className="leading-relaxed">
+                        <strong>Cara pakai:</strong> Putar video YouTube di atas, lalu klik <strong>Siarkan</strong>.
+                        Browser akan minta izin — pilih <strong>tab ini</strong> dan aktifkan <strong>"Share tab audio"</strong>.
+                        Suara YouTube langsung mengalir ke semua outlet secara realtime.
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
                     <div className="flex items-center gap-3">
-                      <div className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors ${
-                        isLive ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40 animate-pulse" : "bg-orange-500/10 text-orange-500"
-                      }`}>
+                      <div
+                        className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors ${
+                          isLive
+                            ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40 animate-pulse"
+                            : "bg-orange-500/10 text-orange-500"
+                        }`}
+                      >
                         <RadioTower size={22} />
                       </div>
                       <div>
                         <h4 className="text-sm font-semibold text-white">
-                          {isLive ? "Siaran YouTube Aktif" : "Siarkan Video Ini ke Semua Outlet"}
+                          {isLive
+                            ? "Siaran Audio Sedang Aktif"
+                            : "Siarkan Audio ke Seluruh Speaker Outlet"}
                         </h4>
                         <p className="text-xs text-neutral-400">
                           {isLive
-                            ? `Durasi: ${formatTime(duration)} • Audio berputar otomatis di seluruh outlet`
-                            : "Klik tombol di samping untuk menyiarkan audio video ini ke outlet secara serentak (1-Klik)"}
+                            ? `Durasi: ${formatTime(duration)} • Audio tab sedang mengalir ke seluruh outlet`
+                            : "Capture audio tab browser ini dan siarkan realtime ke semua outlet"}
                         </p>
                       </div>
                     </div>
 
-                    <div>
+                    <div className="flex flex-wrap items-center gap-2">
                       {isLive ? (
                         <button
                           type="button"
-                          onClick={handleStopYouTubeBroadcast}
+                          onClick={handleStopBroadcast}
                           className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-red-500 to-red-700 px-6 py-3 text-xs font-bold text-white shadow-lg shadow-red-950/30 transition hover:brightness-110 active:scale-95"
                         >
                           <Square size={16} className="fill-white" />
@@ -379,8 +402,8 @@ export default function UploadLink({
                       ) : (
                         <button
                           type="button"
-                          disabled={isConnecting || !youtubeData}
-                          onClick={handleStartYouTubeBroadcast}
+                          disabled={isConnecting || !activeUrl}
+                          onClick={handleStartBroadcast}
                           className="flex items-center gap-2 rounded-xl bg-gradient-to-b from-orange-500 to-orange-700 px-6 py-3 text-xs font-bold text-white shadow-lg shadow-orange-950/30 transition hover:brightness-110 active:scale-95 disabled:opacity-50"
                         >
                           {isConnecting ? (
@@ -400,6 +423,7 @@ export default function UploadLink({
                   </div>
                 </div>
 
+
               </div>
             ) : (
               /* EMPTY STATE */
@@ -411,7 +435,7 @@ export default function UploadLink({
                   Belum Ada Link Video yang Dimuat
                 </h4>
                 <p className="mt-1 max-w-sm text-xs leading-relaxed text-neutral-500">
-                  Tempelkan link YouTube (Video biasa atau Shorts) pada kolom di atas, lalu klik <strong>Tampilkan Video</strong> untuk memutar dan menyiarkannya ke seluruh outlet.
+                  Tempelkan link YouTube di kolom atas, klik <strong>Tampilkan Video</strong>, putar videonya, lalu klik <strong>Siarkan ke Semua Outlet</strong>.
                 </p>
               </div>
             )}
@@ -424,11 +448,12 @@ export default function UploadLink({
             <Info size={16} className="mt-0.5 shrink-0 text-orange-400" />
             <div className="space-y-1">
               <p className="font-semibold text-neutral-200">
-                Keunggulan Fitur Siaran YouTube (1-Klik):
+                Cara Kerja Siaran Audio Tab:
               </p>
               <p className="leading-relaxed">
-                • <strong>Tanpa Popup Share Tab / Screen</strong>: Cukup klik tombol Siarkan, sistem langsung mengaktifkan siaran.<br />
-                • <strong>Otomatis di Speaker Outlet</strong>: Seluruh outlet akan memutar suara YouTube tersebut secara serentak tanpa perlu disentuh.
+                • <strong>Tidak perlu download</strong>: Audio diambil langsung dari tab browser, bukan dari server.<br />
+                • <strong>Bisa sumber apapun</strong>: YouTube, Spotify, file lokal — apapun yang berbunyi di tab ini.<br />
+                • <strong>Realtime</strong>: Suara langsung mengalir ke outlet tanpa delay enkoding.
               </p>
             </div>
           </div>

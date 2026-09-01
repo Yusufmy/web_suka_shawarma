@@ -1,15 +1,20 @@
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
+import { getReverbConfig } from "../config/app_config";
 
 window.Pusher = Pusher;
 
+const reverbConfig = getReverbConfig();
+
+console.log("🔌 Inisialisasi Reverb WebSocket dengan config:", reverbConfig);
+
 const echo = new Echo({
     broadcaster: "reverb",
-    key: import.meta.env.VITE_REVERB_APP_KEY,
-    wsHost: import.meta.env.VITE_REVERB_HOST,
-    wsPort: Number(import.meta.env.VITE_REVERB_PORT),
-    wssPort: Number(import.meta.env.VITE_REVERB_PORT),
-    forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? "https") === "https",
+    key: reverbConfig.key,
+    wsHost: reverbConfig.wsHost,
+    wsPort: reverbConfig.wsPort,
+    wssPort: reverbConfig.wssPort,
+    forceTLS: reverbConfig.forceTLS,
     enabledTransports: ["ws", "wss"],
 });
 

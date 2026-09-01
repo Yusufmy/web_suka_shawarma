@@ -190,6 +190,25 @@ class PetugasReceiver {
     }
   }
 
+  // Buka blokir autoplay browser dengan interaksi pengguna
+  async unlockAudio() {
+    try {
+      if (this.audioContext && this.audioContext.state === "suspended") {
+        await this.audioContext.resume();
+      }
+      this.startBackgroundAudioKeepAlive();
+
+      if (this.audioElement) {
+        if (this.audioElement.srcObject || (this.audioElement.src && this.audioElement.src.startsWith("http"))) {
+          await this.audioElement.play();
+        }
+      }
+      console.log("🔓 Audio permission & context unlocked via user interaction");
+    } catch (e) {
+      console.warn("Unlock audio warning:", e);
+    }
+  }
+
   // Mulai sesi outlet (subscribe WebSocket + Heartbeat)
   async startSession({ outlet, token }) {
     this.outlet = outlet;
@@ -399,16 +418,25 @@ class PetugasReceiver {
       this.onBroadcastConnecting(data);
     }
 
-    if (data.audio?.url && this.audioElement) {
+    const audioUrl = data.audio?.url?.trim();
+    const isRealFileUrl =
+      audioUrl &&
+      !audioUrl.includes("stream.webrtc.local") &&
+      !audioUrl.startsWith("http://stream.webrtc") &&
+      (audioUrl.endsWith(".mp3") ||
+        audioUrl.endsWith(".wav") ||
+        audioUrl.endsWith(".aac") ||
+        audioUrl.includes("/audio-stream/"));
+
+    if (isRealFileUrl && this.audioElement) {
+      console.log("🎵 Memutar siaran file audio statis:", audioUrl);
       this.audioElement.srcObject = null;
-      this.audioElement.src = data.audio.url;
+      this.audioElement.src = audioUrl;
       this.audioElement.volume = this.currentVolume;
       this.audioElement.muted = false;
-      this.audioElement.loop = false; // JANGAN looping
+      this.audioElement.loop = false;
 
-      // SINKRONISASI WAKTU PLAY (LATE-JOIN AUDIO SYNC):
-      // Jika outlet baru membuka web/telat tersambung saat audio file sudah berjalan di tengah-tengah,
-      // lompat langsung ke detik yang sama persis dengan yang sedang diputar di operator/outlet lain.
+      // SINKRONISASI WAKTU PLAY (LATE-JOIN AUDIO SYNC)
       if (data.started_at) {
         const startTime = new Date(data.started_at).getTime();
         const elapsedSeconds = Math.max(0, (Date.now() - startTime) / 1000);
@@ -430,14 +458,13 @@ class PetugasReceiver {
       }
 
       this.audioElement.onended = () => {
-        // Validasi apakah audio benar-benar sudah tuntas atau hanya buffer stall prematur
         if (
           this.audioElement &&
           this.audioElement.duration &&
           this.audioElement.currentTime < this.audioElement.duration - 1.5
         ) {
           console.warn(
-            `⚠️ Audio receiver stall/terputus pada detik ${this.audioElement.currentTime.toFixed(1)} / ${this.audioElement.duration.toFixed(1)}s. Melanjutkan pemutaran...`
+            `⚠️ Audio receiver stall pada detik ${this.audioElement.currentTime.toFixed(1)} / ${this.audioElement.duration.toFixed(1)}s. Melanjutkan...`
           );
           this.audioElement.play().catch(() => {});
           return;
@@ -455,6 +482,15 @@ class PetugasReceiver {
       this.audioElement.play().catch((err) => {
         console.warn("Autoplay audio file terblokir (butuh klik user):", err);
       });
+    } else {
+      // SIARAN WEBRTC PLAYBACK CAPTURE (YouTube / Web Tab Audio)
+      const roomId = data.rtc_room_id || data.room_id;
+      if (roomId) {
+        console.log(`🎬 Menyambungkan ke siaran WebRTC Audio Playback (Room: ${roomId})...`);
+        this.joinWebRTCRoom(roomId, data.broadcast_id || data.id);
+      } else {
+        console.warn("⚠️ Data siaran audio tidak memiliki URL maupun room_id yang valid:", data);
+      }
     }
   }
 
@@ -516,12 +552,16 @@ class PetugasReceiver {
 
     const outletId = parseInt(this.outlet?.id, 10);
     const myDeviceId = getOrCreateDeviceId();
+    const isAudio =
+      roomId.startsWith("audio-") ||
+      roomId.startsWith("audio_") ||
+      roomId.startsWith("audio-cap-");
 
     // 1. Setup PeerConnection
     await this.setupPeerConnection(roomId, broadcastId);
 
-    // 2. Subscribe ke room channel `broadcast.${roomId}`
-    const roomChannelName = `broadcast.${roomId}`;
+    // 2. Subscribe ke room channel (audio.${roomId} atau broadcast.${roomId})
+    const roomChannelName = isAudio ? `audio.${roomId}` : `broadcast.${roomId}`;
     this.roomChannel = echo.channel(roomChannelName);
 
     const onOfferReceived = async (offerData) => {
@@ -558,17 +598,23 @@ class PetugasReceiver {
       this.handleOperatorIce(iceData);
     };
 
-    // Listen WebRTC Offer dari Operator (dengan fallback format nama event)
+    // Listen WebRTC Offer dari Operator (Standard mic & Audio broadcast)
     this.roomChannel.listen(".webrtc.offer", onOfferReceived);
     this.roomChannel.listen("webrtc.offer", onOfferReceived);
+    this.roomChannel.listen(".audio.webrtc.offer", onOfferReceived);
+    this.roomChannel.listen("audio.webrtc.offer", onOfferReceived);
     this.roomChannel.listen(".App\\Events\\WebRTCOffer", onOfferReceived);
+    this.roomChannel.listen(".App\\Events\\audio\\AudioWebRTCOffer", onOfferReceived);
 
-    // Listen Operator ICE Candidate
+    // Listen Operator ICE Candidate (Standard mic & Audio broadcast)
     this.roomChannel.listen(".webrtc.operator.ice", onIceReceived);
     this.roomChannel.listen("webrtc.operator.ice", onIceReceived);
+    this.roomChannel.listen(".audio.webrtc.operator.ice", onIceReceived);
+    this.roomChannel.listen("audio.webrtc.operator.ice", onIceReceived);
     this.roomChannel.listen(".App\\Events\\WebRTCOperatorToOutletIce", onIceReceived);
     this.roomChannel.listen("App\\Events\\WebRTCOperatorToOutletIce", onIceReceived);
     this.roomChannel.listen(".App\\Events\\WebRTCOperatorIceCandidate", onIceReceived);
+    this.roomChannel.listen(".App\\Events\\audio\\AudioWebRTCOperatorIceCandidate", onIceReceived);
 
     // 3. FUNGSI UNTUK KIRIM SINYAL RECEIVER READY
     let hasSentInitialReady = false;
@@ -578,11 +624,12 @@ class PetugasReceiver {
         return;
       }
       try {
-        console.log(`📤 Mengirim sinyal receiver ready (Room: ${roomId}, Outlet: ${outletId}, Device: ${myDeviceId})...`);
+        console.log(`📤 Mengirim sinyal receiver ready (Room: ${roomId}, Outlet: ${outletId}, Device: ${myDeviceId}, isAudio: ${isAudio})...`);
         await petugasService.sendReceiverReady({
           roomId,
           outletId,
           deviceId: myDeviceId,
+          isAudioRoom: isAudio,
         });
       } catch (e) {
         console.error("Gagal mengirim receiver ready:", e);
@@ -607,13 +654,13 @@ class PetugasReceiver {
     let retryCount = 0;
     this.readyRetryTimer = setInterval(async () => {
       retryCount++;
-      if (retryCount > 4 || (this.peerConnection && this.peerConnection.remoteDescription)) {
+      if (retryCount > 6 || (this.peerConnection && this.peerConnection.remoteDescription)) {
         this.clearReadyRetry();
         return;
       }
       console.log(`🔄 Retry receiver ready signal ke-${retryCount}...`);
       await sendReadySignal();
-    }, 2500);
+    }, 1000);
   }
 
   async setupPeerConnection(roomId, broadcastId) {
@@ -625,6 +672,10 @@ class PetugasReceiver {
 
     const outletId = parseInt(this.outlet?.id, 10);
     const myDeviceId = getOrCreateDeviceId();
+    const isAudio =
+      roomId.startsWith("audio-") ||
+      roomId.startsWith("audio_") ||
+      roomId.startsWith("audio-cap-");
 
     this.peerConnection = new RTCPeerConnection(config);
 
@@ -656,7 +707,7 @@ class PetugasReceiver {
         });
       }
 
-      // Hubungkan ke Web Audio API Analyser HANYA untuk visualizer gelombang suara (TIDAK ke destination agar tidak echo/patah-patah)
+      // Hubungkan ke Web Audio API Analyser HANYA untuk visualizer gelombang suara
       if (this.audioContext && this.analyser) {
         try {
           if (this.audioContext.state === "suspended") {
@@ -682,6 +733,7 @@ class PetugasReceiver {
           roomId,
           outletId,
           deviceId: myDeviceId,
+          isAudioRoom: isAudio,
           candidate: {
             candidate: event.candidate.candidate,
             sdpMid: event.candidate.sdpMid,
@@ -713,6 +765,10 @@ class PetugasReceiver {
       const outletId = parseInt(this.outlet?.id, 10);
       const myDeviceId = getOrCreateDeviceId();
       const rawOffer = offerData.offer || offerData;
+      const isAudio =
+        roomId.startsWith("audio-") ||
+        roomId.startsWith("audio_") ||
+        roomId.startsWith("audio-cap-");
 
       if (!rawOffer || !rawOffer.sdp) {
         console.warn("Format Offer tidak valid:", rawOffer);
@@ -764,12 +820,13 @@ class PetugasReceiver {
         .filter((line) => line.length > 0)
         .join("\r\n") + "\r\n";
 
-      console.log(`📤 Mengirim WebRTC Answer ke Operator (Room: ${roomId}, Outlet: ${outletId}, Device: ${myDeviceId})...`);
+      console.log(`📤 Mengirim WebRTC Answer ke Operator (Room: ${roomId}, Outlet: ${outletId}, Device: ${myDeviceId}, isAudio: ${isAudio})...`);
       const res = await petugasService.sendAnswer({
         roomId,
         outletId,
         deviceId: myDeviceId,
         sdp: cleanAnswerSdp,
+        isAudioRoom: isAudio,
       });
 
       console.log("✅ WebRTC Answer berhasil terkirim!", res?.data);
@@ -804,6 +861,7 @@ class PetugasReceiver {
   leaveRoomChannel() {
     if (this.currentRoomId) {
       echo.leaveChannel(`broadcast.${this.currentRoomId}`);
+      echo.leaveChannel(`audio.${this.currentRoomId}`);
       this.currentRoomId = null;
     }
     this.roomChannel = null;

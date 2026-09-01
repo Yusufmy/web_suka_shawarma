@@ -15,7 +15,7 @@ import outlet from "../../../services/outlet";
 import alert from "../../../helpers/alert";
 import OutletCard from "./OutletCard";
 import OutletFormModal from "./OutletFormModal";
-import { SYSTEM_VERSION, RELEASE_DATE } from "../../../config/version";
+import { SYSTEM_VERSION, RELEASE_DATE, isVersionUpToDate, isVersionOutdated } from "../../../config/version";
 
 export default function OutletManager() {
   const [outlets, setOutlets] = useState([]);
@@ -80,11 +80,11 @@ export default function OutletManager() {
     const online = outlets.filter((o) => o.status === "online").length;
     const upToDate = outlets.filter((o) => {
       const ver = o.app_version || o.device_info?.app_version;
-      return ver === SYSTEM_VERSION;
+      return isVersionUpToDate(ver, SYSTEM_VERSION);
     }).length;
     const outdated = outlets.filter((o) => {
       const ver = o.app_version || o.device_info?.app_version;
-      return ver && ver !== SYSTEM_VERSION;
+      return isVersionOutdated(ver, SYSTEM_VERSION);
     }).length;
     const notInstalled = outlets.filter((o) => !o.paired_at).length;
 

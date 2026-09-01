@@ -347,56 +347,36 @@ export default function OperatorDashboard() {
 
 
   // ============================================================
-  // LIVE TIMER
+  // LIVE TIMER & REAL-TIME AUDIO WAVEFORM
   // ============================================================
 
   useEffect(() => {
-
     if (isLive) {
+      timerRef.current = setInterval(() => {
+        setDuration((value) => value + 1);
+      }, 1000);
 
-      timerRef.current =
-        setInterval(() => {
+      // Polling data level suara riil dari mikrofon fisik operator (60fps)
+      let animationFrameId;
+      const updateRealLevels = () => {
+        if (!isLive) return;
+        const realLevels = webrtcService.getAudioLevels(24);
+        setLevels(realLevels);
+        animationFrameId = requestAnimationFrame(updateRealLevels);
+      };
 
-          setDuration(
-            (value) => value + 1
-          );
-
-        }, 1000);
-
-
-      levelRef.current =
-        setInterval(() => {
-
-          setLevels((previous) =>
-            previous.map(
-              () =>
-                6 +
-                Math.floor(
-                  Math.random() * 34
-                )
-            )
-          );
-
-        }, 160);
-
+      animationFrameId = requestAnimationFrame(updateRealLevels);
+      levelRef.current = animationFrameId;
     } else {
-
-      clearInterval(timerRef.current);
-      clearInterval(levelRef.current);
-
-      setLevels(
-        Array(24).fill(6)
-      );
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (levelRef.current) cancelAnimationFrame(levelRef.current);
+      setLevels(Array(24).fill(6));
     }
 
-
     return () => {
-
-      clearInterval(timerRef.current);
-      clearInterval(levelRef.current);
-
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (levelRef.current) cancelAnimationFrame(levelRef.current);
     };
-
   }, [isLive]);
 
 
@@ -1187,31 +1167,36 @@ export default function OperatorDashboard() {
       return;
     }
 
+    const currentBroadcastId = broadcastId;
+
     try {
+      clearTimeout(waitingReceiverTimeoutRef.current);
 
-       clearTimeout(waitingReceiverTimeoutRef.current);
+      // 1. Matikan audio & WebRTC lokal SEKETIKA
+      webrtc.stop().catch((e) => console.error("WebRTC stop error:", e));
 
-       await endBroadcast(broadcastId);
+      // 2. Reset state UI SEKETIKA (tidak menunggu jaringan)
+      connectedOutletIdsRef.current.clear();
+      setConnectedOutlets(0);
+      setConfirmedOutletIds(new Set());
+      setListeningOutletIds(new Set());
 
-        await webrtc.stop();
+      setIsLive(false);
+      setBroadcastStatus("idle");
+      setBroadcastId(null);
+      setRtcRoomId(null);
 
-        connectedOutletIdsRef.current.clear();
-        setConnectedOutlets(0);
-        setConfirmedOutletIds(new Set());
-        setListeningOutletIds(new Set());
+      // 3. Beritahu backend & Reverb bahwa broadcast telah selesai
+      await endBroadcast(currentBroadcastId);
+      console.log("✅ Broadcast berhasil dihentikan di server");
 
-        setIsLive(false);
-        setBroadcastStatus("idle");
-        setBroadcastId(null);
-        setRtcRoomId(null);
-
-      } catch (error) {
-          console.error(
-                "Gagal menghentikan broadcast:",
-                error.response?.data || error
-            );
-        }
-    };
+    } catch (error) {
+      console.error(
+        "Gagal menghentikan broadcast di backend:",
+        error.response?.data || error
+      );
+    }
+  };
   
   
   // ============================================================
@@ -1531,6 +1516,7 @@ export default function OperatorDashboard() {
             targetMode={targetMode}
             selected={selected}
             outlets={outlets}
+            onOutletAudioStateChange={handleOutletAudioStateChange}
         />
 
       ) : activeTab === "schedule" ? (

@@ -1,16 +1,9 @@
 import axios from "axios";
 import { APP_VERSION } from "../config/version";
+import { getApiBaseUrl as resolveBaseUrl } from "../config/app_config";
 
 export const getApiBaseUrl = () => {
-  try {
-    return (
-      localStorage.getItem("custom_api_url") ||
-      import.meta.env.VITE_API_BASE_URL ||
-      "https://api-radio.sukashawarma.com/api"
-    );
-  } catch {
-    return import.meta.env.VITE_API_BASE_URL || "https://api-radio.sukashawarma.com/api";
-  }
+  return resolveBaseUrl();
 };
 
 export const setApiBaseUrl = (url) => {
@@ -173,9 +166,11 @@ export const petugasService = {
   },
 
   // 7. Sinyal Receiver Ready ke Operator
-  async sendReceiverReady({ roomId, outletId, deviceId }) {
+  async sendReceiverReady({ roomId, outletId, deviceId, isAudioRoom = false }) {
     const client = getClient();
-    return client.post("/webrtc/ready", {
+    const isAudio = isAudioRoom || (roomId && roomId.startsWith("audio-"));
+    const endpoint = isAudio ? "/audio/webrtc/receiver-ready" : "/webrtc/ready";
+    return client.post(endpoint, {
       room_id: roomId,
       outlet_id: outletId,
       device_id: deviceId || getOrCreateDeviceId(),
@@ -183,9 +178,11 @@ export const petugasService = {
   },
 
   // 8. Kirim WebRTC Answer ke Operator
-  async sendAnswer({ roomId, outletId, deviceId, sdp }) {
+  async sendAnswer({ roomId, outletId, deviceId, sdp, isAudioRoom = false }) {
     const client = getClient();
-    return client.post("/webrtc/answer", {
+    const isAudio = isAudioRoom || (roomId && roomId.startsWith("audio-"));
+    const endpoint = isAudio ? "/audio/webrtc/answer" : "/webrtc/answer";
+    return client.post(endpoint, {
       room_id: roomId,
       answer: {
         type: "answer",
@@ -197,9 +194,11 @@ export const petugasService = {
   },
 
   // 9. Kirim ICE candidate ke Operator
-  async sendIceCandidate({ roomId, outletId, deviceId, candidate }) {
+  async sendIceCandidate({ roomId, outletId, deviceId, candidate, isAudioRoom = false }) {
     const client = getClient();
-    return client.post("/webrtc/ice", {
+    const isAudio = isAudioRoom || (roomId && roomId.startsWith("audio-"));
+    const endpoint = isAudio ? "/audio/webrtc/ice" : "/webrtc/ice";
+    return client.post(endpoint, {
       room_id: roomId,
       candidate: candidate,
       outlet_id: outletId,

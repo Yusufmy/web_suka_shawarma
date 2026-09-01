@@ -479,7 +479,11 @@ class PetugasReceiver {
         this.audioElement?.play().catch(() => {});
       };
 
-      this.audioElement.play().catch((err) => {
+      this.audioElement.play().then(() => {
+        if (this.outlet?.id) {
+          petugasService.updatePresence(this.outlet.id, "foreground");
+        }
+      }).catch((err) => {
         console.warn("Autoplay audio file terblokir (butuh klik user):", err);
       });
     } else {

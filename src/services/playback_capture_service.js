@@ -147,7 +147,14 @@ class PlaybackCaptureService {
                 audio_id: null,
                 audio: {
                     name: `[Live Web Video] ${videoTitle}`,
-                    url: "http://stream.webrtc.local/live-capture",
+                    // SENGAJA kosong (bukan placeholder) - live capture
+                    // cuma ada live di tab browser operator, tidak ada
+                    // URL HTTP yang benar-benar bisa di-stream. Backend
+                    // memakai audio_id (bukan url) untuk memutuskan apakah
+                    // ini live capture, tapi url tetap dikosongkan di sini
+                    // juga supaya tidak ada pihak lain yang keliru mencoba
+                    // fetch URL palsu ini.
+                    url: "",
                 },
                 outlet_ids: outlets.map((o) => o.id),
             });

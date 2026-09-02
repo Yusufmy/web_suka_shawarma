@@ -301,31 +301,12 @@ class WebRTCService {
             return;
         }
 
-        // Jika peer ini mengirim sinyal ready baru (misal karena refresh halaman atau reconnect),
-        // cek apakah koneksi lama masih aktif atau sedang dalam proses negosiasi.
+        // Tutup koneksi lama jika ada (outlet baru saja restart/reconnect dan meminta Offer baru)
         if (this.peerConnections.has(peerKey) || (!deviceId && (this.peerConnections.has(id) || this.peerConnections.has(String(outletId))))) {
             const oldPc = this.peerConnections.get(peerKey) || this.peerConnections.get(id) || this.peerConnections.get(String(outletId));
             
-            // JIKA KONEKSI MASIH AKTIF (connected, connecting, new) DAN BELUM CLOSED, JANGAN DIRESET!
-            if (oldPc && (oldPc.connectionState === "connected" || oldPc.connectionState === "connecting" || oldPc.connectionState === "new")) {
-                if (oldPc.signalingState !== "closed") {
-                    console.log(
-                        `ℹ️ Peer ${peerKey} sudah aktif (connectionState='${oldPc.connectionState}', signaling='${oldPc.signalingState}'), abaikan sinyal ready berulang.`
-                    );
-                    return;
-                }
-            }
-            
-            // JIKA OFFER BARU SAJA DIKIRIM DAN SEDANG MENUNGGU ANSWER, JANGAN DIRESET!
-            if (oldPc && oldPc.signalingState === "have-local-offer") {
-                console.log(
-                    `ℹ️ Peer ${peerKey} sudah dikirimkan offer dan sedang menunggu answer (signalingState: have-local-offer), abaikan sinyal ready berulang.`
-                );
-                return;
-            }
-
             console.log(
-                `🔄 Peer ${peerKey} koneksi lama terputus/perlu dibuat ulang (state: ${oldPc?.connectionState}, signaling: ${oldPc?.signalingState}). Mereset koneksi lama & membuat Offer baru...`
+                `🔄 Peer ${peerKey} mengirim sinyal ready baru (koneksi lama state: ${oldPc?.connectionState}). Mereset koneksi lama & membuat Offer baru...`
             );
             if (oldPc) {
                 try {
@@ -334,7 +315,7 @@ class WebRTCService {
                     oldPc.oniceconnectionstatechange = null;
                     oldPc.close();
                 } catch (e) {
-                    console.warn(e);
+                    console.warn("Error closing old pc:", e);
                 }
             }
             this.peerConnections.delete(peerKey);

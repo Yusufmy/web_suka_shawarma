@@ -172,7 +172,14 @@ class PetugasReceiver {
       };
 
       this.audioElement.onerror = (e) => {
-        console.warn("⚠️ Audio playback error:", this.audioElement?.error);
+        const err = this.audioElement?.error;
+        // Abaikan warning false-positive jika error hanya karena attribute src dikosongkan saat reset/cleanup
+        if (err && err.code === 4 && (!this.audioElement.src || this.audioElement.src === "" || this.audioElement.src === window.location.href)) {
+          return;
+        }
+        if (err) {
+          console.warn("⚠️ Audio playback error:", err);
+        }
       };
     }
     if (!this.audioContext) {

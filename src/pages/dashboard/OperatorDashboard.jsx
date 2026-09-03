@@ -288,9 +288,10 @@ export default function OperatorDashboard() {
   const { devices, selectedDeviceId } = useMicDevices();
 
   const isConnecting =
-      broadcastStatus === "starting" ||
-      broadcastStatus === "waiting_receiver" ||
-      broadcastStatus === "connecting";
+      !isLive &&
+      (broadcastStatus === "starting" ||
+          broadcastStatus === "waiting_receiver" ||
+          broadcastStatus === "connecting");
 
 
   // ============================================================

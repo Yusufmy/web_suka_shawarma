@@ -14,6 +14,7 @@ import {
   Loader2
 } from "lucide-react";
 import petugasReceiver from "../../services/petugasReceiver";
+import { SYSTEM_VERSION } from "../../config/version";
 
 export default function PetugasWaiting({
   outlet,
@@ -220,7 +221,7 @@ export default function PetugasWaiting({
         {/* Version Footer */}
         <div className="mt-3 text-center">
           <p className="text-[10px] text-neutral-600 font-mono">
-            Radio Suka Shawarma v1.0.0
+            Radio Suka Shawarma v{SYSTEM_VERSION}
           </p>
         </div>
       </div>

@@ -11,6 +11,7 @@ import {
   Sparkles
 } from "lucide-react";
 import petugasService, { getApiBaseUrl, setApiBaseUrl } from "../../services/petugasService";
+import { SYSTEM_VERSION } from "../../config/version";
 
 export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
   const [outletName, setOutletName] = useState(initialOutlet || "");
@@ -257,7 +258,7 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
             <ShieldCheck className="h-4 w-4 text-emerald-500" />
             <span>Koneksi Aman</span>
           </div>
-          <span className="font-mono text-[10px] text-neutral-600">v1.0.0</span>
+          <span className="font-mono text-[10px] text-neutral-600">v{SYSTEM_VERSION}</span>
           <button
             type="button"
             onClick={handleBypassOffline}

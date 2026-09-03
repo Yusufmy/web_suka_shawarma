@@ -1,9 +1,9 @@
 /**
  * Single Source of Truth untuk Versi Aplikasi & Sistem Audio Suka Shawarma
  */
-export const SYSTEM_VERSION = "1.0.0";
-export const APP_VERSION = "1.0.0";
-export const RELEASE_DATE = "2026-08-28";
+export const SYSTEM_VERSION = "1.0.3";
+export const APP_VERSION = "1.0.3";
+export const RELEASE_DATE = "2026-09-03";
 export const APP_NAME = "Audio Suka Shawarma";
 
 export default {

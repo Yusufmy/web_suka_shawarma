@@ -332,7 +332,7 @@ export default function PetugasLive({
         </div>
 
         {/* Action Button: Kembali ke Standby */}
-        <div className="mt-5 flex gap-2">
+        {/* <div className="mt-5 flex gap-2">
           <button
             onClick={onStopLive}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-800/90 py-2.5 px-4 text-xs font-bold text-neutral-200 hover:bg-neutral-800 hover:text-white transition-all"
@@ -340,7 +340,7 @@ export default function PetugasLive({
             <ArrowLeft className="h-3.5 w-3.5" />
             <span>Kembali ke Standby</span>
           </button>
-        </div>
+        </div> */}
       </div>
     </div>
   );

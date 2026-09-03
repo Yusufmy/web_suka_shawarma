@@ -478,16 +478,34 @@ class WebRTCService {
                 };
 
             // ------------------------------------------------------
-            // CREATE OFFER
+            // CREATE OFFER & OPTIMIZE OPUS SDP
             // ------------------------------------------------------
 
             const offer =
                 await peerConnection.createOffer();
 
-            await peerConnection.setLocalDescription(offer);
+            let tunedSdp = offer.sdp || "";
+            if (tunedSdp.includes("a=fmtp:111")) {
+                tunedSdp = tunedSdp.replace(/a=fmtp:111 (.*)/g, (match, params) => {
+                    let newParams = params;
+                    if (!newParams.includes("useinbandfec=1")) newParams += ";useinbandfec=1";
+                    if (!newParams.includes("stereo=1")) newParams += ";stereo=1";
+                    if (!newParams.includes("cbr=1")) newParams += ";cbr=1";
+                    if (!newParams.includes("maxaveragebitrate=")) newParams += ";maxaveragebitrate=64000";
+                    if (!newParams.includes("minptime=")) newParams += ";minptime=10";
+                    return `a=fmtp:111 ${newParams}`;
+                });
+            }
+
+            const tunedOffer = {
+                type: offer.type,
+                sdp: tunedSdp,
+            };
+
+            await peerConnection.setLocalDescription(tunedOffer);
 
             console.log(
-                `📦 Offer created for peer ${peerKey}`
+                `📦 Offer created with Opus FEC for peer ${peerKey}`
             );
 
             // ------------------------------------------------------

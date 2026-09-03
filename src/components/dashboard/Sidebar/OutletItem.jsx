@@ -100,15 +100,19 @@ export default function OutletItem({
         )
       ) : (
         <span
-          className={`h-2 w-2 flex-shrink-0 rounded-full ${presence.dotClass}`}
-          title={presence.label}
+          className={`h-2 w-2 flex-shrink-0 rounded-full ${
+            listeningLive
+              ? "bg-emerald-500 ring-2 ring-emerald-500/40 animate-pulse"
+              : presence.dotClass
+          }`}
+          title={listeningLive ? "Sedang mendengarkan siaran langsung" : presence.label}
         />
       )}
 
       {/* Info */}
       <div className="min-w-0 flex-1">
 
-        <p className="flex items-center gap-1.5 truncate text-[13px] font-medium text-neutral-100">
+        <p className={`flex items-center gap-1.5 truncate text-[13px] font-medium ${listeningLive ? "text-emerald-300 font-semibold" : "text-neutral-100"}`}>
           {outlet.name}
 
           {audioConfirmed && (
@@ -128,8 +132,8 @@ export default function OutletItem({
             </span>
           )}
           <span>·</span>
-          <span className={presence.textClass}>
-            {presence.label}
+          <span className={listeningLive ? "text-emerald-400 font-medium" : presence.textClass}>
+            {listeningLive ? "Mendengarkan live" : presence.label}
           </span>
         </p>
 
@@ -175,10 +179,14 @@ export default function OutletItem({
             dari status online/offline di atas, karena koneksi WebRTC
             ini independen dari heartbeat presence outlet. */}
         {listeningLive && (
-          <span className="flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold text-violet-400">
+          <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 shadow-sm shadow-emerald-500/10">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+            </span>
             <Headphones
-              size={10}
-              className="flex-shrink-0 animate-pulse"
+              size={11}
+              className="flex-shrink-0 text-emerald-400 animate-pulse"
             />
             Mendengarkan
           </span>

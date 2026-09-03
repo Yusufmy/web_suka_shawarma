@@ -138,7 +138,7 @@ export default function OutletItem({
       {/* Status */}
       <div className="flex flex-shrink-0 flex-col items-end gap-1">
 
-        {outlet.status === "online" ? (
+        {/* {outlet.status === "online" ? (
           outlet.is_busy ? (
             <span className="flex-shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
               Ramai
@@ -153,7 +153,7 @@ export default function OutletItem({
             size={13}
             className="flex-shrink-0 text-neutral-600"
           />
-        )}
+        )} */}
 
         {/* Audio-file WebRTC connected & sedang mengalir ke outlet
             ini SEKARANG (otomatis, real-time) - penting untuk

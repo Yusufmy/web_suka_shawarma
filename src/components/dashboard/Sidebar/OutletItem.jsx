@@ -55,6 +55,7 @@ export default function OutletItem({
     outlet.status !== "online" && !hasLoggedInDevice;
 
   const presence = presenceInfo(outlet.presence);
+  const isReceiving = listeningLive || audioPlaying;
 
   return (
     <button
@@ -71,7 +72,7 @@ export default function OutletItem({
         text-left transition
 
         ${
-          listeningLive
+          isReceiving
             ? "bg-emerald-950/30 border border-emerald-500/40 shadow-sm shadow-emerald-950/30 hover:bg-emerald-950/40"
             : selected && targetMode === "specific"
             ? "bg-orange-500/15 ring-1 ring-orange-500/40"
@@ -102,18 +103,18 @@ export default function OutletItem({
       ) : (
         <span
           className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${
-            listeningLive
+            isReceiving
               ? "bg-emerald-500 ring-2 ring-emerald-500/40 animate-pulse"
               : presence.dotClass
           }`}
-          title={listeningLive ? "Sedang mendengarkan siaran langsung" : presence.label}
+          title={isReceiving ? (listeningLive ? "Sedang mendengarkan siaran langsung" : "Sedang mendengarkan audio") : presence.label}
         />
       )}
 
       {/* Info */}
       <div className="min-w-0 flex-1">
 
-        <p className={`flex items-center gap-1.5 truncate text-[13px] font-medium ${listeningLive ? "text-emerald-300 font-semibold" : "text-neutral-100"}`}>
+        <p className={`flex items-center gap-1.5 truncate text-[13px] font-medium ${isReceiving ? "text-emerald-300 font-semibold" : "text-neutral-100"}`}>
           {outlet.name}
 
           {audioConfirmed && (
@@ -138,37 +139,31 @@ export default function OutletItem({
           </span>
         </p>
 
-        {/* Sinyal Hijau Mendengarkan di BAWAH OTL-xxx */}
-        {listeningLive && (
+        {/* Sinyal Hijau Mendengarkan di BAWAH OTL-xxx (baik Live Mic maupun Putar Audio) */}
+        {isReceiving && (
           <div className="mt-1.5 flex items-center">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[10px] font-bold text-emerald-400 shadow-sm shadow-emerald-500/10">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 shadow-sm shadow-emerald-500/10">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
               </span>
-              <Headphones
-                size={11}
-                className="flex-shrink-0 text-emerald-400 animate-pulse"
-              />
+              {listeningLive ? (
+                <Headphones
+                  size={11}
+                  className="flex-shrink-0 text-emerald-400 animate-pulse"
+                />
+              ) : (
+                <Volume2
+                  size={11}
+                  className="flex-shrink-0 text-emerald-400 animate-pulse"
+                />
+              )}
               Mendengarkan
             </span>
           </div>
         )}
 
       </div>
-
-      {/* Status Audio Playback */}
-      {audioPlaying && (
-        <div className="flex flex-shrink-0 flex-col items-end gap-1">
-          <span className="flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-semibold text-sky-400">
-            <Volume2
-              size={10}
-              className="flex-shrink-0 animate-pulse"
-            />
-            Memutar
-          </span>
-        </div>
-      )}
 
     </button>
   );

@@ -437,13 +437,20 @@ class WebRTCService {
 
             peerConnection.onicecandidateerror =
                 (event) => {
-                    console.error(
-                        `❌ ICE CANDIDATE ERROR (peer ${peerKey}):`,
-                        {
-                            errorCode: event.errorCode,
-                            errorText: event.errorText,
-                        }
-                    );
+                    // 701 adalah STUN binding request timeout pada server sekunder (normal jika salah satu STUN lain berhasil)
+                    if (event.errorCode === 701) {
+                        console.warn(
+                            `ℹ️ STUN candidate notice (peer ${peerKey}): ${event.errorText}`
+                        );
+                    } else {
+                        console.warn(
+                            `⚠️ ICE Candidate warning (peer ${peerKey}):`,
+                            {
+                                errorCode: event.errorCode,
+                                errorText: event.errorText,
+                            }
+                        );
+                    }
                 };
 
             // ------------------------------------------------------

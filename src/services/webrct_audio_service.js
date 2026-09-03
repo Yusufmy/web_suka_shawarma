@@ -804,31 +804,8 @@ class WebRTCAudioService {
                 this.pendingRemoteIce?.delete(outletId);
             }
 
+            // Gunakan master audio stream langsung untuk stabilitas maksimal WebRTC
             let streamToSend = this.masterMediaStream;
-
-            // Jika AudioContext aktif, buat GainNode tersendiri untuk outlet ini
-            if (this.masterAudioContext && this.masterSourceNode) {
-                try {
-                    const outletGain = this.masterAudioContext.createGain();
-                    const currentVol = this.outletVolumes?.has(outletId)
-                        ? this.outletVolumes.get(outletId)
-                        : (this.masterVolume ?? 1);
-                    outletGain.gain.setValueAtTime(currentVol, this.masterAudioContext.currentTime);
-
-                    const outletDest = this.masterAudioContext.createMediaStreamDestination();
-                    this.masterSourceNode.connect(outletGain);
-                    outletGain.connect(outletDest);
-
-                    if (!this.outletGainNodes) {
-                        this.outletGainNodes = new Map();
-                    }
-                    this.outletGainNodes.set(outletId, outletGain);
-                    streamToSend = outletDest.stream;
-                    console.log(`🎚️ GainNode dibuat untuk outlet ${outletId} (vol: ${currentVol * 100}%)`);
-                } catch (e) {
-                    console.warn(`⚠️ Gagal buat GainNode outlet ${outletId}, fallback master:`, e);
-                }
-            }
 
             const peerConnection = new RTCPeerConnection({
                 iceServers: this.iceServers || DEFAULT_ICE_SERVERS,

@@ -791,10 +791,30 @@ class WebRTCAudioService {
     async createConnectionForOutlet(outlet) {
         const outletId = outlet.id;
 
+        if (!this.creatingOfferOutlets) {
+            this.creatingOfferOutlets = new Set();
+        }
+
+        // Jika outlet ini sudah terhubung dan sedang memutar audio, JANGAN reset atau buat offer baru!
+        if (this.peerConnections.has(outletId)) {
+            const existingPc = this.peerConnections.get(outletId);
+            if (existingPc && (existingPc.connectionState === "connected" || existingPc.iceConnectionState === "connected")) {
+                console.log(`ℹ️ Outlet ${outletId} sudah CONNECTED dan audio sedang mengalir stabil. Abaikan pembuatan offer baru.`);
+                return;
+            }
+        }
+
+        if (this.creatingOfferOutlets.has(outletId)) {
+            console.log(`⏳ Sedang dalam proses pembuatan Offer untuk outlet ${outletId}, abaikan request bersamaan.`);
+            return;
+        }
+
+        this.creatingOfferOutlets.add(outletId);
+
         try {
             console.log(`🔗 CONNECTING OUTLET: ${outletId} (${outlet.name})`);
 
-            // Jika outlet ini sudah memiliki koneksi lama di operator, reset untuk membuat koneksi baru
+            // Jika outlet ini memiliki koneksi lama yang terputus / gagal, reset untuk membuat koneksi baru
             if (this.peerConnections.has(outletId)) {
                 const existingPc = this.peerConnections.get(outletId);
                 try {
@@ -883,6 +903,10 @@ class WebRTCAudioService {
 
         } catch (error) {
             console.error(`❌ Gagal connect outlet ${outletId}:`, error.message || error);
+        } finally {
+            if (this.creatingOfferOutlets) {
+                this.creatingOfferOutlets.delete(outletId);
+            }
         }
     }
 

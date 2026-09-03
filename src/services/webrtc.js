@@ -301,9 +301,13 @@ class WebRTCService {
             return;
         }
 
-        // Tutup koneksi lama jika ada (outlet baru saja restart/reconnect dan meminta Offer baru)
+        // Jika peer ini sudah terhubung dan sedang aktif mendengar siaran, JANGAN reset koneksi
         if (this.peerConnections.has(peerKey) || (!deviceId && (this.peerConnections.has(id) || this.peerConnections.has(String(outletId))))) {
             const oldPc = this.peerConnections.get(peerKey) || this.peerConnections.get(id) || this.peerConnections.get(String(outletId));
+            if (oldPc && (oldPc.connectionState === "connected" || oldPc.iceConnectionState === "connected")) {
+                console.log(`ℹ️ Peer ${peerKey} sudah CONNECTED dan stabil. Abaikan pembuatan offer baru.`);
+                return;
+            }
             
             console.log(
                 `🔄 Peer ${peerKey} mengirim sinyal ready baru (koneksi lama state: ${oldPc?.connectionState}). Mereset koneksi lama & membuat Offer baru...`

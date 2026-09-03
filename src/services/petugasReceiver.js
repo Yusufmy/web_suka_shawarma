@@ -425,97 +425,12 @@ class PetugasReceiver {
       this.onBroadcastConnecting(data);
     }
 
-    const audioUrl = data.audio?.url?.trim();
-    const isRealFileUrl =
-      audioUrl &&
-      !audioUrl.includes("stream.webrtc.local") &&
-      !audioUrl.startsWith("http://stream.webrtc") &&
-      (audioUrl.endsWith(".mp3") ||
-        audioUrl.endsWith(".wav") ||
-        audioUrl.endsWith(".aac") ||
-        audioUrl.includes("/audio-stream/"));
-
-    if (isRealFileUrl && this.audioElement) {
-      console.log("🎵 Memutar siaran file audio statis:", audioUrl);
-      this.audioElement.srcObject = null;
-      this.audioElement.src = audioUrl;
-      this.audioElement.volume = this.currentVolume;
-      this.audioElement.muted = false;
-      this.audioElement.loop = false;
-
-      // SINKRONISASI WAKTU PLAY (LATE-JOIN AUDIO SYNC)
-      if (data.started_at) {
-        const startTime = new Date(data.started_at).getTime();
-        const elapsedSeconds = Math.max(0, (Date.now() - startTime) / 1000);
-
-        this.audioElement.onloadedmetadata = () => {
-          if (elapsedSeconds > 0 && elapsedSeconds < this.audioElement.duration) {
-            console.log(`⏩ [Late Join Sync] Audio disinkronkan ke detik ke-${elapsedSeconds.toFixed(1)}s`);
-            try {
-              this.audioElement.currentTime = elapsedSeconds;
-            } catch (e) {
-              console.warn("Seek error:", e);
-            }
-          } else if (this.audioElement.duration && elapsedSeconds >= this.audioElement.duration) {
-            console.log("⏹️ [Late Join Sync] Audio sudah selesai diputar sebelumnya.");
-            this.handleBroadcastEnded({ room_id: data.rtc_room_id || data.room_id });
-            return;
-          }
-        };
-      }
-
-      this.audioElement.onended = () => {
-        if (
-          this.audioElement &&
-          this.audioElement.duration &&
-          this.audioElement.currentTime < this.audioElement.duration - 1.5
-        ) {
-          console.warn(
-            `⚠️ Audio receiver stall pada detik ${this.audioElement.currentTime.toFixed(1)} / ${this.audioElement.duration.toFixed(1)}s. Melanjutkan...`
-          );
-          this.audioElement.play().catch(() => {});
-          return;
-        }
-
-        console.log("⏹️ Audio file selesai diputar penuh");
-        this.handleBroadcastEnded({ room_id: data.rtc_room_id || data.room_id });
-      };
-
-      this.audioElement.onstalled = () => {
-        console.warn("⚠️ Audio receiver stream stalled, mencoba resume...");
-        this.audioElement?.play().catch(() => {});
-      };
-
-      this.audioElement.play().then(() => {
-        if (this.outlet?.id) {
-          petugasService.updatePresence(this.outlet.id, "foreground");
-          const roomId = data.rtc_room_id || data.room_id;
-          if (roomId) {
-            petugasService.sendReceiverReady({
-              roomId,
-              outletId: this.outlet.id,
-              isAudioRoom: true,
-            }).catch(() => {});
-          }
-        }
-      }).catch((err) => {
-        console.warn("Autoplay audio file terblokir (butuh klik user):", err);
-      });
-
-      // Bergabung juga ke room WebRTC agar status connected tersinkronisasi ke dashboard operator
-      const roomId = data.rtc_room_id || data.room_id;
-      if (roomId) {
-        this.joinWebRTCRoom(roomId, data.broadcast_id || data.id);
-      }
+    const roomId = data.rtc_room_id || data.room_id;
+    if (roomId) {
+      console.log(`📡 Menghubungkan ke jalur WebRTC Audio Siaran prioritas device (Room: ${roomId})...`);
+      this.joinWebRTCRoom(roomId, data.broadcast_id || data.id);
     } else {
-      // SIARAN WEBRTC PLAYBACK CAPTURE (YouTube / Web Tab Audio)
-      const roomId = data.rtc_room_id || data.room_id;
-      if (roomId) {
-        console.log(`🎬 Menyambungkan ke siaran WebRTC Audio Playback (Room: ${roomId})...`);
-        this.joinWebRTCRoom(roomId, data.broadcast_id || data.id);
-      } else {
-        console.warn("⚠️ Data siaran audio tidak memiliki URL maupun room_id yang valid:", data);
-      }
+      console.warn("⚠️ Data siaran audio tidak memiliki rtc_room_id yang valid:", data);
     }
   }
 
@@ -782,6 +697,11 @@ class PetugasReceiver {
   }
 
   async handleWebRTCOffer(offerData, roomId, broadcastId) {
+    if (this.peerConnection && this.peerConnection.signalingState === "stable" && this.peerConnection.remoteDescription) {
+      console.log("ℹ️ PeerConnection sudah dalam status stable dengan remote description aktif, abaikan offer duplikat.");
+      return;
+    }
+
     if (!this.peerConnection) {
       await this.setupPeerConnection(roomId, broadcastId);
     }

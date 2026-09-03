@@ -794,14 +794,9 @@ class WebRTCAudioService {
         try {
             console.log(`🔗 CONNECTING OUTLET: ${outletId} (${outlet.name})`);
 
-            // Jika outlet ini sudah memiliki koneksi aktif, jangan tutup dan buat ulang
+            // Jika outlet ini sudah memiliki koneksi lama di operator, reset untuk membuat koneksi baru
             if (this.peerConnections.has(outletId)) {
                 const existingPc = this.peerConnections.get(outletId);
-                const state = existingPc?.connectionState;
-                if (state === "connecting" || state === "connected") {
-                    console.log(`ℹ️ Outlet ${outletId} sudah dalam state ${state}, gunakan koneksi yang ada.`);
-                    return;
-                }
                 try {
                     existingPc.close();
                 } catch (e) {}
@@ -871,12 +866,31 @@ class WebRTCAudioService {
                 }
             };
 
-            // Buat offer & set local description
+            // Buat offer & set local description dengan Opus FEC
             const offer = await peerConnection.createOffer({
                 offerToReceiveAudio: false,
                 offerToReceiveVideo: false,
             });
-            await peerConnection.setLocalDescription(offer);
+
+            let tunedSdp = offer.sdp || "";
+            if (tunedSdp.includes("a=fmtp:111")) {
+                tunedSdp = tunedSdp.replace(/a=fmtp:111 (.*)/g, (match, params) => {
+                    let newParams = params;
+                    if (!newParams.includes("useinbandfec=1")) newParams += ";useinbandfec=1";
+                    if (!newParams.includes("stereo=1")) newParams += ";stereo=1";
+                    if (!newParams.includes("cbr=1")) newParams += ";cbr=1";
+                    if (!newParams.includes("maxaveragebitrate=")) newParams += ";maxaveragebitrate=64000";
+                    if (!newParams.includes("minptime=")) newParams += ";minptime=10";
+                    return `a=fmtp:111 ${newParams}`;
+                });
+            }
+
+            const tunedOffer = {
+                type: offer.type,
+                sdp: tunedSdp,
+            };
+
+            await peerConnection.setLocalDescription(tunedOffer);
 
             // Kirim offer ke server menggunakan instance api (dengan header & token)
             await api.post("/audio/webrtc/offer", {

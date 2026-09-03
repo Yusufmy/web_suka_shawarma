@@ -1,7 +1,6 @@
 import axios from "axios";
-import { API_BASE_URL } from "./api";
 
-const API_URL = API_BASE_URL;
+const API_URL = "https://api-radio.sukashawarma.com/api";
 
 const DEFAULT_ICE_SERVERS = [
     { urls: "stun:stun.l.google.com:19302" },

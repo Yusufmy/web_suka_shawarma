@@ -1,7 +1,6 @@
 import axios from "axios";
-import { API_BASE_URL } from "./api";
 
-const API_URL = API_BASE_URL;
+const API_URL = "https://api-radio.sukashawarma.com/api";
 
 const DEFAULT_ICE_SERVERS = [
     {
@@ -177,62 +176,12 @@ class WebRTCService {
             const track = this.localStream.getAudioTracks()[0];
             console.log("✅ Microphone obtained:", track.label);
 
-            // Inisialisasi Web Audio Context untuk kontrol volume & visualizer audio riil
-            try {
-                const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                this.audioContext = new AudioCtx();
-                this.sourceNode = this.audioContext.createMediaStreamSource(this.localStream);
-                this.outletGainNodes = new Map();
-                if (!this.outletVolumes) {
-                    this.outletVolumes = new Map();
-                }
-
-                this.analyser = this.audioContext.createAnalyser();
-                this.analyser.fftSize = 128;
-                this.analyser.smoothingTimeConstant = 0.6;
-                this.sourceNode.connect(this.analyser);
-                this.freqDataArray = new Uint8Array(this.analyser.frequencyBinCount);
-
-                console.log("🎚️ Web Audio Context & Real-time Analyser live mic diinisialisasi");
-            } catch (e) {
-                console.warn("⚠️ Gagal inisialisasi AudioContext live mic:", e);
-            }
-
             return true;
         } catch (error) {
             console.error("❌ FAILED STARTING WEBRTC:", error);
             await this.stop();
             throw error;
         }
-    }
-
-    // Mendapatkan level audio riil dari mikrofon (tinggi bar 6px sampai 48px)
-    getAudioLevels(numBars = 24) {
-        if (!this.analyser || !this.localStream || !this.freqDataArray) {
-            return Array(numBars).fill(6);
-        }
-
-        this.analyser.getByteFrequencyData(this.freqDataArray);
-
-        const levels = [];
-        const binSize = Math.max(1, Math.floor(this.freqDataArray.length / numBars));
-
-        for (let i = 0; i < numBars; i++) {
-            let sum = 0;
-            const start = i * binSize;
-            const end = Math.min(start + binSize, this.freqDataArray.length);
-
-            for (let j = start; j < end; j++) {
-                sum += this.freqDataArray[j];
-            }
-
-            const avg = sum / (end - start || 1); // 0 .. 255
-            // Minimal 6px saat hening, naik hingga 48px saat bersuara kencang
-            const height = Math.round(6 + (avg / 255) * 42);
-            levels.push(height);
-        }
-
-        return levels;
     }
 
     // ============================================================
@@ -301,16 +250,31 @@ class WebRTCService {
             return;
         }
 
-        // Jika peer ini sudah terhubung dan sedang aktif mendengar siaran, JANGAN reset koneksi
+        // Jika peer ini mengirim sinyal ready baru (misal karena refresh halaman atau reconnect),
+        // cek apakah koneksi lama masih aktif atau sedang dalam proses negosiasi.
         if (this.peerConnections.has(peerKey) || (!deviceId && (this.peerConnections.has(id) || this.peerConnections.has(String(outletId))))) {
             const oldPc = this.peerConnections.get(peerKey) || this.peerConnections.get(id) || this.peerConnections.get(String(outletId));
-            if (oldPc && (oldPc.connectionState === "connected" || oldPc.iceConnectionState === "connected")) {
-                console.log(`ℹ️ Peer ${peerKey} sudah CONNECTED dan stabil. Abaikan pembuatan offer baru.`);
-                return;
+            
+            // JIKA KONEKSI MASIH AKTIF (connected, connecting, new) DAN BELUM CLOSED, JANGAN DIRESET!
+            if (oldPc && (oldPc.connectionState === "connected" || oldPc.connectionState === "connecting" || oldPc.connectionState === "new")) {
+                if (oldPc.signalingState !== "closed") {
+                    console.log(
+                        `ℹ️ Peer ${peerKey} sudah aktif (connectionState='${oldPc.connectionState}', signaling='${oldPc.signalingState}'), abaikan sinyal ready berulang.`
+                    );
+                    return;
+                }
             }
             
+            // JIKA OFFER BARU SAJA DIKIRIM DAN SEDANG MENUNGGU ANSWER, JANGAN DIRESET!
+            if (oldPc && oldPc.signalingState === "have-local-offer") {
+                console.log(
+                    `ℹ️ Peer ${peerKey} sudah dikirimkan offer dan sedang menunggu answer (signalingState: have-local-offer), abaikan sinyal ready berulang.`
+                );
+                return;
+            }
+
             console.log(
-                `🔄 Peer ${peerKey} mengirim sinyal ready baru (koneksi lama state: ${oldPc?.connectionState}). Mereset koneksi lama & membuat Offer baru...`
+                `🔄 Peer ${peerKey} koneksi lama terputus/perlu dibuat ulang (state: ${oldPc?.connectionState}, signaling: ${oldPc?.signalingState}). Mereset koneksi lama & membuat Offer baru...`
             );
             if (oldPc) {
                 try {
@@ -319,7 +283,7 @@ class WebRTCService {
                     oldPc.oniceconnectionstatechange = null;
                     oldPc.close();
                 } catch (e) {
-                    console.warn("Error closing old pc:", e);
+                    console.warn(e);
                 }
             }
             this.peerConnections.delete(peerKey);
@@ -370,7 +334,9 @@ class WebRTCService {
             }
 
             // ------------------------------------------------------
-            // ADD MICROPHONE TRACK LANGSUNG DARI MIC OPERATOR
+            // ADD MICROPHONE TRACK (stream yang sama dipakai
+            // bersama, WebRTC mendukung 1 track dipakai di banyak
+            // PeerConnection)
             // ------------------------------------------------------
 
             this.localStream
@@ -416,20 +382,13 @@ class WebRTCService {
 
             peerConnection.onicecandidateerror =
                 (event) => {
-                    // 701 adalah STUN binding request timeout pada server sekunder (normal jika salah satu STUN lain berhasil)
-                    if (event.errorCode === 701) {
-                        console.warn(
-                            `ℹ️ STUN candidate notice (peer ${peerKey}): ${event.errorText}`
-                        );
-                    } else {
-                        console.warn(
-                            `⚠️ ICE Candidate warning (peer ${peerKey}):`,
-                            {
-                                errorCode: event.errorCode,
-                                errorText: event.errorText,
-                            }
-                        );
-                    }
+                    console.error(
+                        `❌ ICE CANDIDATE ERROR (peer ${peerKey}):`,
+                        {
+                            errorCode: event.errorCode,
+                            errorText: event.errorText,
+                        }
+                    );
                 };
 
             // ------------------------------------------------------
@@ -464,34 +423,16 @@ class WebRTCService {
                 };
 
             // ------------------------------------------------------
-            // CREATE OFFER & OPTIMIZE OPUS SDP
+            // CREATE OFFER
             // ------------------------------------------------------
 
             const offer =
                 await peerConnection.createOffer();
 
-            let tunedSdp = offer.sdp || "";
-            if (tunedSdp.includes("a=fmtp:111")) {
-                tunedSdp = tunedSdp.replace(/a=fmtp:111 (.*)/g, (match, params) => {
-                    let newParams = params;
-                    if (!newParams.includes("useinbandfec=1")) newParams += ";useinbandfec=1";
-                    if (!newParams.includes("stereo=1")) newParams += ";stereo=1";
-                    if (!newParams.includes("cbr=1")) newParams += ";cbr=1";
-                    if (!newParams.includes("maxaveragebitrate=")) newParams += ";maxaveragebitrate=64000";
-                    if (!newParams.includes("minptime=")) newParams += ";minptime=10";
-                    return `a=fmtp:111 ${newParams}`;
-                });
-            }
-
-            const tunedOffer = {
-                type: offer.type,
-                sdp: tunedSdp,
-            };
-
-            await peerConnection.setLocalDescription(tunedOffer);
+            await peerConnection.setLocalDescription(offer);
 
             console.log(
-                `📦 Offer created with Opus FEC for peer ${peerKey}`
+                `📦 Offer created for peer ${peerKey}`
             );
 
             // ------------------------------------------------------
@@ -772,8 +713,31 @@ class WebRTCService {
         }
     }
 
+    // ============================================================
+    // GET LOCAL STREAM
+    // ============================================================
+
     getLocalStream() {
         return this.localStream;
+    }
+
+    // ============================================================
+    // GET PEER CONNECTION (backward compatible)
+    // ============================================================
+
+    getPeerConnection(outletId, deviceId = null) {
+        const id = Number(outletId);
+        if (deviceId) {
+            const key = `${id}_${deviceId}`;
+            if (this.peerConnections.has(key)) {
+                return this.peerConnections.get(key);
+            }
+        }
+        return (
+            this.peerConnections.get(id) ||
+            this.peerConnections.get(String(outletId)) ||
+            null
+        );
     }
 
     // ============================================================
@@ -877,22 +841,6 @@ class WebRTCService {
         }
 
         // ----------------------------------------------------
-        // STOP AUDIO CONTEXT & GAIN NODES
-        // ----------------------------------------------------
-
-        if (this.audioContext) {
-            try {
-                this.audioContext.close();
-            } catch (e) {}
-            this.audioContext = null;
-            this.sourceNode = null;
-        }
-
-        if (this.outletGainNodes) {
-            this.outletGainNodes.clear();
-        }
-
-        // ----------------------------------------------------
         // CLOSE SEMUA PEER CONNECTION
         // ----------------------------------------------------
 
@@ -914,36 +862,6 @@ class WebRTCService {
         console.log(
             "✅ WebRTC stopped"
         );
-    }
-
-    setOutletVolume(outletId, volume) {
-        const vol = Math.max(0, Math.min(100, Number(volume))) / 100;
-        if (!this.outletVolumes) {
-            this.outletVolumes = new Map();
-        }
-
-        if (outletId === "all") {
-            this.masterVolume = vol;
-            if (this.outletGainNodes) {
-                this.outletGainNodes.forEach((gainNode) => {
-                    try {
-                        gainNode.gain.setValueAtTime(vol, this.audioContext?.currentTime || 0);
-                    } catch (e) {}
-                });
-            }
-            console.log(`🔊 Live Mic Master volume WebRTC diubah ke ${vol * 100}%`);
-            return;
-        }
-
-        const id = Number(outletId);
-        this.outletVolumes.set(id, vol);
-        const gainNode = this.outletGainNodes?.get(id) || this.outletGainNodes?.get(String(outletId));
-        if (gainNode) {
-            try {
-                gainNode.gain.setValueAtTime(vol, this.audioContext?.currentTime || 0);
-                console.log(`🔊 Live Mic WebRTC Gain outlet ${id} diubah ke ${vol * 100}%`);
-            } catch (e) {}
-        }
     }
 }
 

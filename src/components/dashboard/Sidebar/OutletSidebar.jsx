@@ -3,7 +3,6 @@ import { SYSTEM_VERSION } from "../../../config/version";
 
 import OutletSearch from "./OutletSearch";
 import OutletList from "./OutletList";
-import OutletVolumeControl from "./OutletVolumeControl";
 
 export default function OutletSidebar({
     outlets,
@@ -113,12 +112,6 @@ export default function OutletSidebar({
                 )}
 
             </div>
-
-            {/* Volume Control Per Outlet (Dinonaktifkan demi kestabilan murni WebRTC) */}
-            {/* <OutletVolumeControl
-                outlets={outlets}
-                onlineOutlets={onlineOutlets}
-            /> */}
 
             {/* Version Footer */}
             <div className="border-t border-neutral-800/80 px-4 py-2.5 text-center">

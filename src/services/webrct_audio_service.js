@@ -1,8 +1,8 @@
 import axios from "axios";
 import echo from "../websocket/echo";
-import api, { API_BASE_URL } from "./api";
+import api from "./api";
 
-const API_URL = API_BASE_URL;
+const API_URL = "https://api-radio.sukashawarma.com/api";
 
 const DEFAULT_ICE_SERVERS = [
     { urls: "stun:stun.l.google.com:19302" },
@@ -101,165 +101,6 @@ class WebRTCAudioService {
     }
 
     // ============================================================
-    // START TAB AUDIO BROADCAST (LIVE CAPTURE — tanpa yt-dlp)
-    //
-    // Capture audio dari tab browser menggunakan getDisplayMedia,
-    // lalu stream langsung ke semua outlet via WebRTC.
-    // Tidak perlu download/backend — apapun yang berbunyi di tab
-    // (YouTube, Spotify, dll) langsung dikirim ke outlet.
-    // ============================================================
-
-    async startTabAudioBroadcast(mediaStream, outlets = [], targetMode = "all") {
-        try {
-            console.log("====================================");
-            console.log("🎙️ START TAB AUDIO BROADCAST (LIVE CAPTURE)");
-            console.log("====================================");
-            console.log("🏪 Outlets:", outlets);
-
-            // Stop broadcast sebelumnya
-            await this.stop({ silent: true });
-
-            this.iceServers = await this.getIceServers();
-
-            const roomId = "audio_live_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9);
-            this.roomId  = roomId;
-            this.outlets = outlets;
-            this.audioUrl = null;
-
-            // Simpan MediaStream live capture
-            this._tabMediaStream = mediaStream;
-
-            if (!outlets.length) throw new Error("Tidak ada outlet yang dipilih");
-
-            // Subscribe WebSocket dulu sebelum announce
-            this.subscribeToRoom(roomId);
-
-            // Announce ke backend (notifikasi semua outlet via Reverb + FCM)
-            await this.announceBroadcast({
-                roomId,
-                audioId: null,
-                audioName: "Live Capture",
-                audioUrl: "",
-                outlets,
-            });
-
-            // Hubungkan semua outlet paralel menggunakan stream yang sama
-            const connectionPromises = outlets.map((outlet) =>
-                this._createConnectionForOutletFromStream(outlet, mediaStream)
-            );
-
-            Promise.allSettled(connectionPromises).then((results) => {
-                const failed = results.filter(r => r.status === "rejected").length;
-                console.log(`✅ TAB AUDIO: ${outlets.length - failed}/${outlets.length} outlet berhasil`);
-                if (failed > 0) console.warn("⚠️ Outlet gagal:", failed);
-            });
-
-            // Deteksi jika tab audio stream berhenti (user stop share)
-            mediaStream.getAudioTracks().forEach((track) => {
-                track.onended = () => {
-                    console.log("🔇 Tab audio stream dihentikan user");
-                    this.stop().then(() => {
-                        if (this.onStateChange) this.onStateChange("stopped");
-                    });
-                };
-            });
-
-            if (this.onStateChange) this.onStateChange("playing");
-
-            console.log("✅ TAB AUDIO BROADCAST STARTED");
-            console.log("====================================");
-
-        } catch (error) {
-            console.error("❌ FAILED START TAB AUDIO BROADCAST:", error);
-            await this.stop();
-            throw error;
-        }
-    }
-
-    // ============================================================
-    // CREATE CONNECTION FOR OUTLET — dari MediaStream langsung
-    // (mode live capture, tidak perlu AudioContext dari URL)
-    // ============================================================
-
-    async _createConnectionForOutletFromStream(outlet, mediaStream) {
-        const outletId = outlet.id;
-
-        try {
-            console.log(`🔗 TAB AUDIO connecting outlet ${outletId} (${outlet.name})`);
-
-            // Cleanup koneksi lama
-            if (this.peerConnections.has(outletId)) {
-                try { this.peerConnections.get(outletId).close(); } catch (e) {}
-                this.peerConnections.delete(outletId);
-                this.pendingRemoteIce?.delete(outletId);
-            }
-
-            const peerConnection = new RTCPeerConnection({
-                iceServers: this.iceServers || DEFAULT_ICE_SERVERS,
-            });
-
-            this.peerConnections.set(outletId, peerConnection);
-
-            // Tambahkan audio track dari tab langsung
-            const tracks = mediaStream.getAudioTracks();
-            console.log(`🎵 Adding ${tracks.length} live audio track(s) to outlet ${outletId}`);
-            tracks.forEach((track) => peerConnection.addTrack(track, mediaStream));
-
-            // ICE candidate — FIRE AND FORGET (tidak di-await agar tidak blocking)
-            peerConnection.onicecandidate = (event) => {
-                if (!event.candidate) return;
-                // Jangan await — kirim di background, tidak perlu tunggu respons
-                api.post("/audio/webrtc/operator-ice", {
-                    outlet_id: outletId,
-                    room_id:   this.roomId,
-                    candidate: {
-                        candidate:     event.candidate.candidate,
-                        sdpMid:        event.candidate.sdpMid,
-                        sdpMLineIndex: event.candidate.sdpMLineIndex,
-                    },
-                }).catch(() => {}); // silent fail
-            };
-
-            // Connection state — logging saja
-            peerConnection.onconnectionstatechange = () => {
-                const state = peerConnection.connectionState;
-                console.log(`🔗 TAB AUDIO outlet ${outletId}: ${state}`);
-                if (state === "connected") {
-                    console.log(`✅ TAB AUDIO outlet ${outletId} CONNECTED — audio mengalir!`);
-                }
-            };
-
-            // Buat offer & set local description
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-
-            // Kirim offer via api
-            await api.post("/audio/webrtc/offer", {
-                outlet_id: outletId,
-                room_id:   this.roomId,
-                offer: {
-                    type: peerConnection.localDescription.type,
-                    sdp:  peerConnection.localDescription.sdp,
-                },
-            });
-
-            console.log(`📦 TAB AUDIO Offer sent → outlet ${outletId}`);
-
-            // TIDAK menunggu connected di sini — koneksi selesai di background.
-            // waitForConnection di tab mode tidak perlu karena:
-            // 1. 20 outlet paralel → menunggu semua akan timeout
-            // 2. Outlet yang lambat connect tetap akan terhubung sendiri
-            // 3. Tidak ada audio lokal yang perlu sinkronisasi timing
-
-        } catch (error) {
-            console.error(`❌ TAB AUDIO gagal outlet ${outletId}:`, error.message);
-            throw error;
-        }
-    }
-
-
-
-    // ============================================================
     // SUBSCRIBE WEBSOCKET CHANNEL
     //
     // Channel ini dipakai backend untuk mem-broadcast
@@ -315,19 +156,6 @@ class WebRTCAudioService {
                     `📡 Outlet ${outletId} melaporkan siap menerima audio stream (receiver-ready / reconnect)...`
                 );
 
-                // ── DEBOUNCE: cegah double trigger per outlet ──────────
-                if (!this._receiverReadyTimestamps) {
-                    this._receiverReadyTimestamps = new Map();
-                }
-                const lastHandled = this._receiverReadyTimestamps.get(outletId) || 0;
-                const now = Date.now();
-                if (now - lastHandled < 1000) {
-                    console.log(`⏭️ receiver-ready outlet ${outletId} diabaikan (debounce 1s)`);
-                    return;
-                }
-                this._receiverReadyTimestamps.set(outletId, now);
-                // ────────────────────────────────────────────────────────
-
                 const isTargeted =
                     !this.outlets ||
                     this.outlets.length === 0 ||
@@ -345,12 +173,7 @@ class WebRTCAudioService {
                     };
 
                 try {
-                    // Deteksi mode aktif: tab capture atau URL stream
-                    if (this._tabMediaStream && this._tabMediaStream.active) {
-                        await this._createConnectionForOutletFromStream(outlet, this._tabMediaStream);
-                    } else {
-                        await this.createConnectionForOutlet(outlet);
-                    }
+                    await this.createConnectionForOutlet(outlet);
                 } catch (e) {
                     console.error(`❌ Gagal merespon receiver-ready outlet ${outletId}:`, e);
                 }
@@ -457,8 +280,8 @@ class WebRTCAudioService {
 
     async getIceServers() {
         try {
-            const { data } = await api.get(
-                "/webrtc/ice-servers",
+            const { data } = await axios.get(
+                `${API_URL}/webrtc/ice-servers`,
                 { timeout: 4000 }
             );
 
@@ -560,53 +383,51 @@ class WebRTCAudioService {
             });
 
             // ====================================================
-            // 1. BUAT SINGLE MASTER AUDIO PIPELINE
+            // MONITOR AUDIO (operator dengar lokal)
             //
-            // Hanya 1 AudioContext & 1 AudioElement untuk semua outlet!
-            // Menghilangkan duplikasi download 20x dan kehabisan memori.
+            // Dimainkan begitu outlet PERTAMA connect, supaya
+            // kira-kira sinkron dengan "jam master" broadcast.
             // ====================================================
 
-            const audioElement = new Audio(audioUrl);
-            audioElement.crossOrigin = "anonymous";
-            audioElement.preload = "auto";
+            this.monitorAudioElement = new Audio(audioUrl);
 
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            const audioContext = new AudioCtx();
-            const source = audioContext.createMediaElementSource(audioElement);
-            const destination = audioContext.createMediaStreamDestination();
-            source.connect(destination);
-            source.connect(audioContext.destination); // Operator dengar langsung tanpa monitor ganda
+            this.monitorAudioElement.crossOrigin = "anonymous";
+            this.monitorAudioElement.preload = "auto";
 
-            if (audioContext.state === "suspended") {
-                await audioContext.resume();
-            }
-
-            this.masterAudioElement = audioElement;
-            this.masterAudioContext = audioContext;
-            this.masterSourceNode = source;
-            this.masterMediaStream = destination.stream;
-
-            this.monitorAudioElement = audioElement;
-
-            audioElement.ontimeupdate = () => {
-                if (this.onProgress && this.masterAudioElement) {
-                    const currentTime = this.masterAudioElement.currentTime || 0;
-                    const duration = this.masterAudioElement.duration || 0;
+            this.monitorAudioElement.ontimeupdate = () => {
+                if (this.onProgress && this.monitorAudioElement) {
+                    const currentTime = this.monitorAudioElement.currentTime || 0;
+                    const duration = this.monitorAudioElement.duration || 0;
                     this.onProgress({ currentTime, duration });
                 }
             };
 
-            audioElement.onloadedmetadata = () => {
-                if (this.onProgress && this.masterAudioElement) {
-                    const currentTime = this.masterAudioElement.currentTime || 0;
-                    const duration = this.masterAudioElement.duration || 0;
+            this.monitorAudioElement.onloadedmetadata = () => {
+                if (this.onProgress && this.monitorAudioElement) {
+                    const currentTime = this.monitorAudioElement.currentTime || 0;
+                    const duration = this.monitorAudioElement.duration || 0;
                     this.onProgress({ currentTime, duration });
                 }
             };
 
-            audioElement.onended = async () => {
+            this.monitorAudioElement.onended = async () => {
+                // Pastikan audio benar-benar sudah mencapai akhir file (bukan buffer stall prematur)
+                if (
+                    this.monitorAudioElement &&
+                    this.monitorAudioElement.duration &&
+                    this.monitorAudioElement.currentTime < this.monitorAudioElement.duration - 1.5
+                ) {
+                    console.warn(
+                        `⚠️ Monitor audio stall pada detik ${this.monitorAudioElement.currentTime.toFixed(1)} / ${this.monitorAudioElement.duration.toFixed(1)}s. Melanjutkan pemutaran...`
+                    );
+                    try {
+                        await this.monitorAudioElement.play();
+                    } catch (e) {}
+                    return;
+                }
+
                 console.log(
-                    "🏁 Audio file selesai diputar penuh. Mengakhiri broadcast..."
+                    "🏁 Audio monitor lokal selesai diputar penuh. Mengakhiri broadcast..."
                 );
                 await this.stop({ silent: true, isNaturalEnd: true });
                 if (this.onStateChange) {
@@ -614,24 +435,107 @@ class WebRTCAudioService {
                 }
             };
 
-            audioElement.onstalled = () => {
-                console.warn("⚠️ Audio stalled, mencoba resume...");
-                this.masterAudioElement?.play().catch(() => {});
+            this.monitorAudioElement.onstalled = () => {
+                console.warn("⚠️ Monitor audio stalled, mencoba resume...");
+                this.monitorAudioElement?.play().catch(() => {});
             };
 
+            console.log(
+                "⏳ Menghubungkan semua outlet secara paralel..."
+            );
+
             // ====================================================
-            // 2. MULAI PUTAR AUDIO MASTER SEKETIKA
+            // CONNECT SEMUA OUTLET SEKALIGUS (PARALEL)
             //
-            // Pembuatan PeerConnection & pengiriman Offer akan dilakukan
-            // secara on-demand begitu outlet merespons dengan 'receiver-ready'.
-            // Pola ini mencegah banjir 20 request HTTP serentak ke server.
+            // Tiap outlet independen: begitu dia sendiri connect,
+            // dia langsung play() dari 0:00, tanpa menunggu outlet
+            // lain selesai/gagal.
             // ====================================================
 
-            await audioElement.play();
+            const connectionPromises = outlets.map(
+                (outlet) =>
+                    this.createConnectionForOutlet(outlet)
+            );
+
+            // ====================================================
+            // LACAK PENYELESAIAN DI BACKGROUND
+            //
+            // Tidak menahan start() - cuma untuk logging berapa
+            // outlet yang akhirnya berhasil/gagal.
+            // ====================================================
+
+            Promise.allSettled(connectionPromises).then(
+                (results) => {
+
+                    const failedCount = results.filter(
+                        (result) =>
+                            result.status === "rejected"
+                    ).length;
+
+                    console.log(
+                        "===================================="
+                    );
+
+                    console.log(
+                        "✅ SEMUA OUTLET SELESAI DIPROSES:",
+                        outlets.length - failedCount,
+                        "/",
+                        outlets.length,
+                        "berhasil"
+                    );
+
+                    console.log(
+                        "===================================="
+                    );
+
+                    if (failedCount > 0) {
+
+                        const failedIds = outlets
+                            .filter(
+                                (_, index) =>
+                                    results[index].status ===
+                                    "rejected"
+                            )
+                            .map(
+                                (outlet) => outlet.id
+                            );
+
+                        console.warn(
+                            "⚠️ Outlet gagal terhubung:",
+                            failedIds
+                        );
+                    }
+                }
+            );
+
+            // ====================================================
+            // JANGAN GAGALKAN SELURUH BROADCAST HANYA KARENA
+            // WEBRTC GAGAL/TIMEOUT.
+            //
+            // announceBroadcast() di atas sudah mengirim event +
+            // push notification (FCM) ke SEMUA outlet, termasuk
+            // yang sedang background/terminated - outlet itu akan
+            // menerima & memutar audio lewat jalur push, BUKAN
+            // lewat WebRTC live ini. Jadi outlet gagal connect
+            // WebRTC (mis. karena app-nya sedang di-kill) itu
+            // NORMAL, bukan kegagalan total broadcast. WebRTC
+            // cuma dipakai untuk outlet yang app-nya sedang
+            // terbuka (real-time low-latency).
+            // ====================================================
+
+            // ====================================================
+            // MULAI MONITOR AUDIO OPERATOR
+            // ====================================================
+
+            await this.monitorAudioElement.play();
 
             console.log(
-                "▶️ AUDIO BROADCAST PLAYING — siap melayani outlet yang aktif!"
+                "▶️ AUDIO BROADCAST PLAYING (operator monitor)"
             );
+
+            // ====================================================
+            // STATE
+            // ====================================================
 
             if (this.onStateChange) {
                 this.onStateChange("playing");
@@ -640,15 +544,16 @@ class WebRTCAudioService {
             console.log(
                 "===================================="
             );
+
             console.log(
                 "✅ AUDIO BROADCAST STARTED"
             );
-            console.log(
-                "===================================="
-            );
 
-            return;
+            console.log(
+                "====================================");
+
         } catch (error) {
+
             console.error(
                 "❌ FAILED START AUDIO BROADCAST:",
                 error
@@ -791,122 +696,320 @@ class WebRTCAudioService {
     async createConnectionForOutlet(outlet) {
         const outletId = outlet.id;
 
-        if (!this.creatingOfferOutlets) {
-            this.creatingOfferOutlets = new Set();
-        }
-
-        // Jika outlet ini sudah terhubung dan sedang memutar audio, JANGAN reset atau buat offer baru!
-        if (this.peerConnections.has(outletId)) {
-            const existingPc = this.peerConnections.get(outletId);
-            if (existingPc && (existingPc.connectionState === "connected" || existingPc.iceConnectionState === "connected")) {
-                console.log(`ℹ️ Outlet ${outletId} sudah CONNECTED dan audio sedang mengalir stabil. Abaikan pembuatan offer baru.`);
-                return;
-            }
-        }
-
-        if (this.creatingOfferOutlets.has(outletId)) {
-            console.log(`⏳ Sedang dalam proses pembuatan Offer untuk outlet ${outletId}, abaikan request bersamaan.`);
-            return;
-        }
-
-        this.creatingOfferOutlets.add(outletId);
-
         try {
-            console.log(`🔗 CONNECTING OUTLET: ${outletId} (${outlet.name})`);
+            console.log("====================================");
+            console.log(
+                "🔗 CONNECTING OUTLET:",
+                outletId
+            );
+            console.log(
+                "🏪 Outlet:",
+                outlet.name
+            );
+            console.log("====================================");
 
-            // Jika outlet ini memiliki koneksi lama yang terputus / gagal, reset untuk membuat koneksi baru
+            // ====================================================
+            // CLEANUP KONEKSI LAMA JIKA ADA (RECONNECT / RE-OFFER)
+            // ====================================================
+
             if (this.peerConnections.has(outletId)) {
-                const existingPc = this.peerConnections.get(outletId);
+                const oldPc = this.peerConnections.get(outletId);
                 try {
-                    existingPc.close();
+                    oldPc.onicecandidate = null;
+                    oldPc.onconnectionstatechange = null;
+                    oldPc.oniceconnectionstatechange = null;
+                    oldPc.close();
                 } catch (e) {}
                 this.peerConnections.delete(outletId);
-                this.pendingRemoteIce?.delete(outletId);
+                this.pendingRemoteIce.delete(outletId);
             }
 
-            // Gunakan master audio stream langsung untuk stabilitas maksimal WebRTC
-            let streamToSend = this.masterMediaStream;
+            if (this.outletAudio.has(outletId)) {
+                const oldAudio = this.outletAudio.get(outletId);
+                try {
+                    oldAudio.audioElement?.pause();
+                    oldAudio.audioContext?.close();
+                } catch (e) {}
+                this.outletAudio.delete(outletId);
+            }
 
-            const peerConnection = new RTCPeerConnection({
-                iceServers: this.iceServers || DEFAULT_ICE_SERVERS,
-            });
+            // ====================================================
+            // AUDIO PIPELINE MILIK OUTLET INI
+            // ====================================================
 
-            this.peerConnections.set(outletId, peerConnection);
+            const audioElement = new Audio(this.audioUrl);
 
-            // Tambahkan audio track dari stream yang dikontrol volumenya
-            const tracks = streamToSend.getAudioTracks();
-            console.log(`🎵 Adding ${tracks.length} audio track(s) to outlet ${outletId}`);
-            tracks.forEach((track) => {
-                peerConnection.addTrack(track, streamToSend);
-            });
+            audioElement.crossOrigin = "anonymous";
+            audioElement.preload = "auto";
 
-            // ICE Candidate — Fire and forget (tidak blocking)
-            peerConnection.onicecandidate = (event) => {
-                if (!event.candidate) return;
-                api.post("/audio/webrtc/operator-ice", {
-                    outlet_id: outletId,
-                    room_id: this.roomId,
-                    candidate: {
-                        candidate: event.candidate.candidate,
-                        sdpMid: event.candidate.sdpMid,
-                        sdpMLineIndex: event.candidate.sdpMLineIndex,
-                    },
-                }).catch(() => {});
-            };
+            const audioContext = new AudioContext();
 
-            // Connection state
-            peerConnection.onconnectionstatechange = () => {
-                const state = peerConnection.connectionState;
-                console.log(`🔗 Outlet ${outletId} state: ${state}`);
-                if (this.onStateChange) {
-                    this.onStateChange({ outletId, state });
-                }
-            };
+            const source =
+                audioContext.createMediaElementSource(
+                    audioElement
+                );
 
-            // Buat offer & set local description dengan Opus FEC
-            const offer = await peerConnection.createOffer({
-                offerToReceiveAudio: false,
-                offerToReceiveVideo: false,
-            });
+            const destination =
+                audioContext.createMediaStreamDestination();
 
-            let tunedSdp = offer.sdp || "";
-            if (tunedSdp.includes("a=fmtp:111")) {
-                tunedSdp = tunedSdp.replace(/a=fmtp:111 (.*)/g, (match, params) => {
-                    let newParams = params;
-                    if (!newParams.includes("useinbandfec=1")) newParams += ";useinbandfec=1";
-                    if (!newParams.includes("stereo=1")) newParams += ";stereo=1";
-                    if (!newParams.includes("cbr=1")) newParams += ";cbr=1";
-                    if (!newParams.includes("maxaveragebitrate=")) newParams += ";maxaveragebitrate=64000";
-                    if (!newParams.includes("minptime=")) newParams += ";minptime=10";
-                    return `a=fmtp:111 ${newParams}`;
+            source.connect(destination);
+
+            if (audioContext.state === "suspended") {
+                await audioContext.resume();
+            }
+
+            const mediaStream = destination.stream;
+
+            this.outletAudio.set(
+                outletId,
+                { audioElement, audioContext }
+            );
+
+            // ====================================================
+            // CREATE PEER CONNECTION
+            // ====================================================
+
+            const peerConnection =
+                new RTCPeerConnection({
+                    iceServers:
+                        this.iceServers ||
+                        DEFAULT_ICE_SERVERS,
                 });
-            }
 
-            const tunedOffer = {
-                type: offer.type,
-                sdp: tunedSdp,
-            };
+            this.peerConnections.set(
+                outletId,
+                peerConnection
+            );
 
-            await peerConnection.setLocalDescription(tunedOffer);
+            // ====================================================
+            // ADD AUDIO TRACK
+            // ====================================================
 
-            // Kirim offer ke server menggunakan instance api (dengan header & token)
-            await api.post("/audio/webrtc/offer", {
-                outlet_id: outletId,
-                room_id: this.roomId,
-                offer: {
-                    type: peerConnection.localDescription.type,
-                    sdp: peerConnection.localDescription.sdp,
-                },
+            const tracks =
+                mediaStream.getTracks();
+
+            console.log(
+                `🎵 Adding ${tracks.length} audio track(s) to outlet ${outletId}`
+            );
+
+            tracks.forEach((track) => {
+                peerConnection.addTrack(
+                    track,
+                    mediaStream
+                );
             });
 
-            console.log(`✅ Audio OFFER sent → outlet ${outletId}`);
+            // ====================================================
+            // ICE CANDIDATE
+            // ====================================================
+
+            peerConnection.onicecandidate =
+                async (event) => {
+                    try {
+                        if (!event.candidate) {
+                            console.log(
+                                `🧊 ICE gathering completed: outlet ${outletId}`
+                            );
+
+                            return;
+                        }
+
+                        console.log(
+                            `🧊 Local ICE: outlet ${outletId}`
+                        );
+
+                        await this.sendIceCandidate(
+                            outletId,
+                            event.candidate
+                        );
+
+                    } catch (error) {
+                        console.error(
+                            "❌ Failed sending ICE:",
+                            error
+                        );
+                    }
+                };
+
+            // ====================================================
+            // CONNECTION STATE
+            //
+            // hasConnectedOnce dipakai supaya kita bisa bedakan
+            // "gagal connect di awal" (sudah ditangani lewat
+            // catch block di bawah) dengan "putus di tengah
+            // jalan" (baru bisa dideteksi setelah pernah
+            // connected). Untuk kasus kedua, langsung anggap
+            // outlet ini selesai - jangan tunggu audio lokalnya
+            // (yang sudah tidak nyampe ke outlet) habis sendiri.
+            // ====================================================
+
+            let hasConnectedOnce = false;
+
+            peerConnection
+                .onconnectionstatechange =
+                () => {
+                    const state =
+                        peerConnection
+                            .connectionState;
+
+                    console.log(
+                        `🔗 Outlet ${outletId} state:`,
+                        state
+                    );
+
+                    if (this.onStateChange) {
+                        this.onStateChange({
+                            outletId,
+                            state,
+                        });
+                    }
+
+                    if (
+                        hasConnectedOnce &&
+                        (
+                            state === "failed" ||
+                            state === "closed"
+                        )
+                    ) {
+                        console.warn(
+                            `⚠️ Outlet ${outletId} terputus di tengah broadcast`
+                        );
+
+                        this.finishOutlet(
+                            outletId
+                        );
+                    }
+                };
+
+            // ====================================================
+            // ICE CONNECTION STATE
+            // ====================================================
+
+            peerConnection
+                .oniceconnectionstatechange =
+                () => {
+                    console.log(
+                        `🧊 Outlet ${outletId} ICE:`,
+                        peerConnection
+                            .iceConnectionState
+                    );
+                };
+
+            // ====================================================
+            // CREATE OFFER
+            // ====================================================
+
+            const offer =
+                await peerConnection.createOffer({
+                    offerToReceiveAudio: false,
+                    offerToReceiveVideo: false,
+                });
+
+            console.log(
+                `📦 Offer created for outlet ${outletId}`
+            );
+
+            // ====================================================
+            // SET LOCAL DESCRIPTION
+            // ====================================================
+
+            await peerConnection
+                .setLocalDescription(
+                    offer
+                );
+
+            // ====================================================
+            // SEND OFFER
+            // ====================================================
+
+            await axios.post(
+                `${API_URL}/audio/webrtc/offer`,
+                {
+                    outlet_id: outletId,
+
+                    room_id: this.roomId,
+
+                    offer: {
+                        type:
+                            peerConnection
+                                .localDescription
+                                .type,
+
+                        sdp:
+                            peerConnection
+                                .localDescription
+                                .sdp,
+                    },
+                }
+            );
+
+            console.log(
+                `✅ Audio OFFER sent → outlet ${outletId}`
+            );
+
+            // ====================================================
+            // WAIT WEBRTC CONNECTION
+            // ====================================================
+
+            console.log(
+                `⏳ Waiting WebRTC connection → outlet ${outletId}`
+            );
+
+            await this.waitForConnection(
+                outletId
+            );
+
+            hasConnectedOnce = true;
+
+            // ====================================================
+            // CONNECTED → PLAY DARI 0:00
+            //
+            // Terlepas dari sudah berapa lama outlet lain playing,
+            // outlet ini SELALU mulai dari awal track.
+            // ====================================================
+
+            await audioElement.play();
+
+            console.log(
+                `▶️ Outlet ${outletId} mulai dengar audio dari 0:00`
+            );
+
+            audioElement.onended = () => {
+                // Pastikan audio outlet benar-benar sudah mencapai akhir file
+                if (
+                    audioElement &&
+                    audioElement.duration &&
+                    audioElement.currentTime < audioElement.duration - 1.5
+                ) {
+                    console.warn(
+                        `⚠️ Audio outlet ${outletId} stall pada detik ${audioElement.currentTime.toFixed(1)} / ${audioElement.duration.toFixed(1)}s. Melanjutkan...`
+                    );
+                    audioElement.play().catch(() => {});
+                    return;
+                }
+
+                console.log(
+                    `⏹️ Outlet ${outletId} selesai memutar audio penuh`
+                );
+
+                this.finishOutlet(outletId);
+            };
+
+            audioElement.onstalled = () => {
+                console.warn(`⚠️ Audio outlet ${outletId} stalled, mencoba resume...`);
+                audioElement.play().catch(() => {});
+            };
 
         } catch (error) {
-            console.error(`❌ Gagal connect outlet ${outletId}:`, error.message || error);
-        } finally {
-            if (this.creatingOfferOutlets) {
-                this.creatingOfferOutlets.delete(outletId);
-            }
+            console.error(
+                `❌ Failed connection outlet ${outletId}:`,
+                error.response?.data ||
+                error
+            );
+
+            await this.finishOutlet(outletId);
+
+            throw error;
         }
     }
 
@@ -1005,8 +1108,8 @@ class WebRTCAudioService {
         candidate
     ) {
         try {
-            await api.post(
-                "/audio/webrtc/operator-ice",
+            await axios.post(
+                `${API_URL}/audio/webrtc/operator-ice`,
                 {
                     outlet_id: outletId,
 
@@ -1321,53 +1424,22 @@ class WebRTCAudioService {
         // jaringan sama sekali.
         // ========================================================
 
-        // MASTER AUDIO & MONITOR
-        if (this.masterAudioElement) {
-            try {
-                this.masterAudioElement.pause();
-                this.masterAudioElement.currentTime = 0;
-                this.masterAudioElement.src = "";
-            } catch (e) {}
-            this.masterAudioElement = null;
-        }
-
-        if (this.masterMediaStream) {
-            try {
-                this.masterMediaStream.getTracks().forEach((t) => t.stop());
-            } catch (e) {}
-            this.masterMediaStream = null;
-        }
-
-        if (this.masterAudioContext) {
-            try {
-                this.masterAudioContext.close();
-            } catch (e) {}
-            this.masterAudioContext = null;
-        }
+        // MONITOR AUDIO
 
         if (this.monitorAudioElement) {
             try {
                 this.monitorAudioElement.pause();
-                this.monitorAudioElement.currentTime = 0;
+
+                this.monitorAudioElement.currentTime =
+                    0;
             } catch (error) {
                 console.error(error);
             }
-            this.monitorAudioElement.onended = null;
+
+            this.monitorAudioElement.onended =
+                null;
+
             this.monitorAudioElement = null;
-        }
-
-        // TAB MEDIA STREAM (mode live capture)
-
-        if (this._tabMediaStream) {
-            try {
-                this._tabMediaStream.getTracks().forEach((t) => t.stop());
-            } catch (e) {}
-            this._tabMediaStream = null;
-        }
-
-        // Reset debounce timestamps
-        if (this._receiverReadyTimestamps) {
-            this._receiverReadyTimestamps.clear();
         }
 
         // SEMUA PEER CONNECTION
@@ -1449,8 +1521,8 @@ class WebRTCAudioService {
 
         if (this.roomId) {
             try {
-                await api.post(
-                    "/audio/webrtc/audio/broadcast/end",
+                await axios.post(
+                    `${API_URL}/audio/webrtc/audio/broadcast/end`,
                     {
                         room_id: this.roomId,
                         outlet_ids: (this.outlets || []).map(
@@ -1512,36 +1584,6 @@ class WebRTCAudioService {
             this.onStateChange(
                 "stopped"
             );
-        }
-    }
-
-    setOutletVolume(outletId, volume) {
-        const vol = Math.max(0, Math.min(100, Number(volume))) / 100;
-        if (!this.outletVolumes) {
-            this.outletVolumes = new Map();
-        }
-
-        if (outletId === "all") {
-            this.masterVolume = vol;
-            if (this.outletGainNodes) {
-                this.outletGainNodes.forEach((gainNode) => {
-                    try {
-                        gainNode.gain.setValueAtTime(vol, this.masterAudioContext?.currentTime || 0);
-                    } catch (e) {}
-                });
-            }
-            console.log(`🔊 Master volume WebRTC diubah ke ${vol * 100}%`);
-            return;
-        }
-
-        const id = Number(outletId);
-        this.outletVolumes.set(id, vol);
-        const gainNode = this.outletGainNodes?.get(id);
-        if (gainNode) {
-            try {
-                gainNode.gain.setValueAtTime(vol, this.masterAudioContext?.currentTime || 0);
-                console.log(`🔊 WebRTC Gain outlet ${id} diubah ke ${vol * 100}%`);
-            } catch (e) {}
         }
     }
 }

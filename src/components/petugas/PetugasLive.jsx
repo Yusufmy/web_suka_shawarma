@@ -109,38 +109,29 @@ export default function PetugasLive({
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Ambil byte frekuensi asli dari Analyser Web Audio
+      // Ambil byte frekuensi asli dari Analyser jika ada
       const freqData = petugasReceiver.getAudioFrequencyData();
-      const hasAnalyserAudio = freqData && freqData.some((val) => val > 4);
-      const isAudioElementPlaying =
-        petugasReceiver.audioElement &&
-        !petugasReceiver.audioElement.paused &&
-        !petugasReceiver.audioElement.ended &&
-        (petugasReceiver.audioElement.currentTime > 0 || petugasReceiver.audioElement.srcObject);
+      const hasRealAudio = freqData && freqData.some((val) => val > 5);
 
       const numBars = 36;
       const spacing = canvas.width / numBars;
       const barWidth = spacing * 0.6;
       const centerY = canvas.height / 2;
-      const now = Date.now() * 0.005;
 
       for (let i = 0; i < numBars; i++) {
-        let rawHeight = 4;
+        let rawHeight = 0;
 
-        if (hasAnalyserAudio) {
-          // Petakan data frekuensi audio riil per bar
+        if (hasRealAudio) {
+          // Petakan data frekuensi audio riil
           const dataIdx = Math.floor((i / numBars) * freqData.length);
           const val = freqData[dataIdx] || 0;
-          if (val > 4) {
-            rawHeight = (val / 255) * (canvas.height * 0.88);
-          }
-        } else if (isAudioElementPlaying) {
-          // Animasi gelombang ritmik natural saat audio aktif berputar di elemen
-          const sin1 = Math.sin(now * 1.8 + i * 0.4);
-          const cos1 = Math.cos(now * 1.2 + i * 0.3);
-          const sin2 = Math.sin(now * 3.1 + i * 0.7);
-          const energy = Math.abs(sin1 * 0.5 + cos1 * 0.3 + sin2 * 0.2);
-          rawHeight = Math.max(6, energy * (canvas.height * 0.75));
+          rawHeight = (val / 255) * (canvas.height * 0.85);
+        } else {
+          // Animasi sinusoidal halus jika suara sedang hening
+          const t = Date.now() * 0.006;
+          const wave1 = Math.sin(t + i * 0.35);
+          const wave2 = Math.cos(t * 1.5 + i * 0.2);
+          rawHeight = (Math.abs(wave1 * wave2) + 0.15) * (canvas.height * 0.7);
         }
 
         const barHeight = Math.max(

@@ -19,6 +19,7 @@ export default function PetugasWaiting({
   outlet,
   volume,
   onVolumeChange,
+  onTriggerDemoLive,
   onLogout,
   wsConnected = true,
   isConnectingAudio = false,
@@ -128,9 +129,10 @@ export default function PetugasWaiting({
 
           {isConnectingAudio && (
             <button
-              type="button"
               onClick={() => {
-                petugasReceiver.unlockAudio();
+                if (petugasReceiver.audioElement) {
+                  petugasReceiver.audioElement.play().catch((e) => console.warn(e));
+                }
               }}
               className="mt-4 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs px-4 py-2.5 shadow-lg shadow-orange-500/20 transition-all active:scale-95 animate-pulse"
             >
@@ -204,8 +206,19 @@ export default function PetugasWaiting({
           </button>
         </div>
 
+        {/* Action / Demo Simulation */}
+        <div className="mt-5 pt-4 border-t border-neutral-800/80">
+          <button
+            onClick={onTriggerDemoLive}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-orange-500/40 bg-gradient-to-r from-orange-600/20 to-amber-600/20 py-2.5 px-3 text-xs font-bold text-orange-300 hover:from-orange-600/30 hover:to-amber-600/30 hover:border-orange-500 transition-all"
+          >
+            <Sparkles className="h-4 w-4 text-orange-400" />
+            <span>Simulasikan Siaran Masuk (Demo Preview)</span>
+          </button>
+        </div>
+
         {/* Version Footer */}
-        <div className="mt-5 pt-3 border-t border-neutral-800/80 text-center">
+        <div className="mt-3 text-center">
           <p className="text-[10px] text-neutral-600 font-mono">
             Radio Suka Shawarma v1.0.0
           </p>

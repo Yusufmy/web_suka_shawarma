@@ -17,11 +17,11 @@ export const DASHBOARD_TABS = [
     label: "Unggah Audio",
     icon: Upload,
   },
-  // {
-  //   id: "link",
-  //   label: "Unggah Link",
-  //   icon: Link2,
-  // },
+  {
+    id: "link",
+    label: "Unggah Link",
+    icon: Link2,
+  },
   {
     id: "outlets",
     label: "Outlet",

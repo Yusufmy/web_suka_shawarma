@@ -288,10 +288,9 @@ export default function OperatorDashboard() {
   const { devices, selectedDeviceId } = useMicDevices();
 
   const isConnecting =
-      !isLive &&
-      (broadcastStatus === "starting" ||
-          broadcastStatus === "waiting_receiver" ||
-          broadcastStatus === "connecting");
+      broadcastStatus === "starting" ||
+      broadcastStatus === "waiting_receiver" ||
+      broadcastStatus === "connecting";
 
 
   // ============================================================
@@ -348,36 +347,56 @@ export default function OperatorDashboard() {
 
 
   // ============================================================
-  // LIVE TIMER & REAL-TIME AUDIO WAVEFORM
+  // LIVE TIMER
   // ============================================================
 
   useEffect(() => {
+
     if (isLive) {
-      timerRef.current = setInterval(() => {
-        setDuration((value) => value + 1);
-      }, 1000);
 
-      // Polling data level suara riil dari mikrofon fisik operator (60fps)
-      let animationFrameId;
-      const updateRealLevels = () => {
-        if (!isLive) return;
-        const realLevels = webrtcService.getAudioLevels(24);
-        setLevels(realLevels);
-        animationFrameId = requestAnimationFrame(updateRealLevels);
-      };
+      timerRef.current =
+        setInterval(() => {
 
-      animationFrameId = requestAnimationFrame(updateRealLevels);
-      levelRef.current = animationFrameId;
+          setDuration(
+            (value) => value + 1
+          );
+
+        }, 1000);
+
+
+      levelRef.current =
+        setInterval(() => {
+
+          setLevels((previous) =>
+            previous.map(
+              () =>
+                6 +
+                Math.floor(
+                  Math.random() * 34
+                )
+            )
+          );
+
+        }, 160);
+
     } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (levelRef.current) cancelAnimationFrame(levelRef.current);
-      setLevels(Array(24).fill(6));
+
+      clearInterval(timerRef.current);
+      clearInterval(levelRef.current);
+
+      setLevels(
+        Array(24).fill(6)
+      );
     }
 
+
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (levelRef.current) cancelAnimationFrame(levelRef.current);
+
+      clearInterval(timerRef.current);
+      clearInterval(levelRef.current);
+
     };
+
   }, [isLive]);
 
 
@@ -1168,36 +1187,31 @@ export default function OperatorDashboard() {
       return;
     }
 
-    const currentBroadcastId = broadcastId;
-
     try {
-      clearTimeout(waitingReceiverTimeoutRef.current);
 
-      // 1. Matikan audio & WebRTC lokal SEKETIKA
-      webrtc.stop().catch((e) => console.error("WebRTC stop error:", e));
+       clearTimeout(waitingReceiverTimeoutRef.current);
 
-      // 2. Reset state UI SEKETIKA (tidak menunggu jaringan)
-      connectedOutletIdsRef.current.clear();
-      setConnectedOutlets(0);
-      setConfirmedOutletIds(new Set());
-      setListeningOutletIds(new Set());
+       await endBroadcast(broadcastId);
 
-      setIsLive(false);
-      setBroadcastStatus("idle");
-      setBroadcastId(null);
-      setRtcRoomId(null);
+        await webrtc.stop();
 
-      // 3. Beritahu backend & Reverb bahwa broadcast telah selesai
-      await endBroadcast(currentBroadcastId);
-      console.log("✅ Broadcast berhasil dihentikan di server");
+        connectedOutletIdsRef.current.clear();
+        setConnectedOutlets(0);
+        setConfirmedOutletIds(new Set());
+        setListeningOutletIds(new Set());
 
-    } catch (error) {
-      console.error(
-        "Gagal menghentikan broadcast di backend:",
-        error.response?.data || error
-      );
-    }
-  };
+        setIsLive(false);
+        setBroadcastStatus("idle");
+        setBroadcastId(null);
+        setRtcRoomId(null);
+
+      } catch (error) {
+          console.error(
+                "Gagal menghentikan broadcast:",
+                error.response?.data || error
+            );
+        }
+    };
   
   
   // ============================================================
@@ -1517,7 +1531,6 @@ export default function OperatorDashboard() {
             targetMode={targetMode}
             selected={selected}
             outlets={outlets}
-            onOutletAudioStateChange={handleOutletAudioStateChange}
         />
 
       ) : activeTab === "schedule" ? (

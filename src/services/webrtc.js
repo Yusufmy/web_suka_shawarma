@@ -85,7 +85,13 @@ class WebRTCService {
                 { timeout: 4000 }
             );
 
-            const servers = data?.data?.iceServers || [];
+            const rawServers = data?.data?.iceServers || [];
+            const validServers = rawServers.filter((s) => {
+                if (!s || !s.urls) return false;
+                const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+                return urls.some((u) => u && !u.includes("turn::") && !u.includes("stun::"));
+            });
+
             return [
                 {
                     urls: [
@@ -95,7 +101,10 @@ class WebRTCService {
                         "stun:stun.cloudflare.com:3478",
                     ],
                 },
-                ...servers.filter((s) => !s.urls?.includes("stun:stun.l.google.com:19302")),
+                ...validServers.filter((s) => {
+                    const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+                    return !urls.some((u) => u.includes("stun.l.google.com"));
+                }),
             ];
         } catch (error) {
             console.warn(
@@ -382,12 +391,13 @@ class WebRTCService {
 
             peerConnection.onicecandidateerror =
                 (event) => {
-                    console.error(
-                        `❌ ICE CANDIDATE ERROR (peer ${peerKey}):`,
-                        {
-                            errorCode: event.errorCode,
-                            errorText: event.errorText,
-                        }
+                    // Error 701 adalah timeout normal saat browser probing salah satu endpoint STUN/TURN cadangan
+                    if (event.errorCode === 701) {
+                        return;
+                    }
+                    console.warn(
+                        `⚠️ ICE candidate notice (peer ${peerKey}):`,
+                        event.errorText || event
                     );
                 };
 

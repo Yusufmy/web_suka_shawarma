@@ -230,6 +230,7 @@ export default function OperatorDashboard() {
   ///BROADCAST
   const [broadcastId, setBroadcastId] = useState(null);
   const [rtcRoomId, setRtcRoomId] = useState(null);
+  const isStoppingRef = useRef(false);
 
   // ============================================================
   // BERSIHKAN BROADCAST LIVE YANG "NYANGKUT"
@@ -1183,9 +1184,11 @@ export default function OperatorDashboard() {
   }, []);
 
   const handleStop = async () => {
-    if (!broadcastId) {
+    if (!broadcastId || isStoppingRef.current) {
       return;
     }
+
+    isStoppingRef.current = true;
 
     try {
 
@@ -1210,7 +1213,9 @@ export default function OperatorDashboard() {
                 "Gagal menghentikan broadcast:",
                 error.response?.data || error
             );
-        }
+      } finally {
+          isStoppingRef.current = false;
+      }
     };
   
   
@@ -1354,6 +1359,13 @@ export default function OperatorDashboard() {
           // di-set sinkron persis saat webrtc.startBroadcast()
           // dipanggil. Event ready ini terbukti bisa datang SEBELUM
           // render itu sempat jalan.
+          if (webrtc.roomId && data.room_id !== webrtc.roomId) {
+              console.log(
+                  `ℹ️ Sinyal ready dari room lama (${data.room_id}) diabaikan (room aktif: ${webrtc.roomId})`
+              );
+              return;
+          }
+
           const operatorReadyForThisRoom =
               webrtc.roomId === data.room_id &&
               !!webrtc.localStream;

@@ -366,40 +366,15 @@ class WebRTCService {
             }
 
             // ------------------------------------------------------
-            // ADD MICROPHONE TRACK DENGAN KONTROL GAIN PER OUTLET
+            // ADD MICROPHONE TRACK LANGSUNG DARI MIC OPERATOR
             // ------------------------------------------------------
 
-            let streamToSend = this.localStream;
-            if (this.audioContext && this.sourceNode) {
-                try {
-                    const outletGain = this.audioContext.createGain();
-                    const currentVol = this.outletVolumes?.has(id)
-                        ? this.outletVolumes.get(id)
-                        : (this.masterVolume ?? 1);
-                    outletGain.gain.setValueAtTime(currentVol, this.audioContext.currentTime);
-
-                    const outletDest = this.audioContext.createMediaStreamDestination();
-                    this.sourceNode.connect(outletGain);
-                    outletGain.connect(outletDest);
-
-                    this.outletGainNodes.set(peerKey, outletGain);
-                    if (!deviceId) {
-                        this.outletGainNodes.set(id, outletGain);
-                        this.outletGainNodes.set(String(outletId), outletGain);
-                    }
-                    streamToSend = outletDest.stream;
-                    console.log(`🎚️ Live Mic GainNode dibuat untuk peer ${peerKey} (vol: ${currentVol * 100}%)`);
-                } catch (e) {
-                    console.warn(`⚠️ Gagal buat GainNode live mic peer ${peerKey}:`, e);
-                }
-            }
-
-            streamToSend
+            this.localStream
                 .getTracks()
                 .forEach((track) => {
                     peerConnection.addTrack(
                         track,
-                        streamToSend
+                        this.localStream
                     );
                 });
 

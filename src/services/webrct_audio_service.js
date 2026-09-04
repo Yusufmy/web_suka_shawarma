@@ -166,6 +166,26 @@ class WebRTCAudioService {
                     return;
                 }
 
+                // Debounce per outlet agar tidak merespon dobel jika outlet mengirim receiver-ready berulang dalam waktu singkat
+                if (!this.receiverReadyDebounce) {
+                    this.receiverReadyDebounce = new Map();
+                }
+                const now = Date.now();
+                const lastTime = this.receiverReadyDebounce.get(outletId) || 0;
+                const currentPc = this.peerConnections.get(outletId);
+                const isConnectingOrConnected =
+                    currentPc &&
+                    (currentPc.connectionState === "connecting" ||
+                        currentPc.connectionState === "connected");
+
+                if (now - lastTime < 3000 && isConnectingOrConnected) {
+                    console.log(
+                        `ℹ️ Outlet ${outletId} receiver-ready diabaikan (debounce 3s, koneksi masih aktif/connecting)`
+                    );
+                    return;
+                }
+                this.receiverReadyDebounce.set(outletId, now);
+
                 const outlet =
                     this.outlets.find((o) => Number(o.id) === outletId) || {
                         id: outletId,
@@ -1456,6 +1476,7 @@ class WebRTCAudioService {
 
         this.peerConnections.clear();
         this.pendingRemoteIce.clear();
+        this.receiverReadyDebounce?.clear();
 
         // SEMUA AUDIO ELEMENT OUTLET (pause dulu, AudioContext.close()
         // yang lebih lambat menyusul di bawah)

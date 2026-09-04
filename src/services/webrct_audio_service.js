@@ -394,6 +394,19 @@ class WebRTCAudioService {
             this.monitorAudioElement.crossOrigin = "anonymous";
             this.monitorAudioElement.preload = "auto";
 
+            // Master Audio Context & Shared MediaStream untuk seluruh outlet WebRTC
+            this.masterAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const masterSource = this.masterAudioContext.createMediaElementSource(this.monitorAudioElement);
+            this.masterDestination = this.masterAudioContext.createMediaStreamDestination();
+
+            // Hubungkan ke destination WebRTC broadcast (agar suara dialirkan ke seluruh outlet)
+            masterSource.connect(this.masterDestination);
+
+            // Hubungkan juga ke speaker lokal operator (agar operator tetap mendengar siaran)
+            masterSource.connect(this.masterAudioContext.destination);
+
+            this.sharedMediaStream = this.masterDestination.stream;
+
             this.monitorAudioElement.ontimeupdate = () => {
                 if (this.onProgress && this.monitorAudioElement) {
                     const currentTime = this.monitorAudioElement.currentTime || 0;
@@ -439,6 +452,17 @@ class WebRTCAudioService {
                 console.warn("⚠️ Monitor audio stalled, mencoba resume...");
                 this.monitorAudioElement?.play().catch(() => {});
             };
+
+            if (this.masterAudioContext.state === "suspended") {
+                await this.masterAudioContext.resume();
+            }
+
+            try {
+                await this.monitorAudioElement.play();
+                console.log("▶️ Master audio broadcast playing (operator monitor & shared WebRTC stream)");
+            } catch (e) {
+                console.warn("⚠️ Autoplay audio monitor gagal:", e);
+            }
 
             console.log(
                 "⏳ Menghubungkan semua outlet secara paralel..."
@@ -522,16 +546,6 @@ class WebRTCAudioService {
             // cuma dipakai untuk outlet yang app-nya sedang
             // terbuka (real-time low-latency).
             // ====================================================
-
-            // ====================================================
-            // MULAI MONITOR AUDIO OPERATOR
-            // ====================================================
-
-            await this.monitorAudioElement.play();
-
-            console.log(
-                "▶️ AUDIO BROADCAST PLAYING (operator monitor)"
-            );
 
             // ====================================================
             // STATE
@@ -724,46 +738,19 @@ class WebRTCAudioService {
                 this.pendingRemoteIce.delete(outletId);
             }
 
-            if (this.outletAudio.has(outletId)) {
-                const oldAudio = this.outletAudio.get(outletId);
-                try {
-                    oldAudio.audioElement?.pause();
-                    oldAudio.audioContext?.close();
-                } catch (e) {}
-                this.outletAudio.delete(outletId);
-            }
-
             // ====================================================
-            // AUDIO PIPELINE MILIK OUTLET INI
+            // AUDIO PIPELINE BERSAMA (SHARED MASTER STREAM)
             // ====================================================
 
-            const audioElement = new Audio(this.audioUrl);
-
-            audioElement.crossOrigin = "anonymous";
-            audioElement.preload = "auto";
-
-            const audioContext = new AudioContext();
-
-            const source =
-                audioContext.createMediaElementSource(
-                    audioElement
-                );
-
-            const destination =
-                audioContext.createMediaStreamDestination();
-
-            source.connect(destination);
-
-            if (audioContext.state === "suspended") {
-                await audioContext.resume();
+            if (!this.sharedMediaStream) {
+                throw new Error("Master audio stream belum siap");
             }
 
-            const mediaStream = destination.stream;
+            if (this.masterAudioContext && this.masterAudioContext.state === "suspended") {
+                await this.masterAudioContext.resume();
+            }
 
-            this.outletAudio.set(
-                outletId,
-                { audioElement, audioContext }
-            );
+            const mediaStream = this.sharedMediaStream;
 
             // ====================================================
             // CREATE PEER CONNECTION
@@ -962,62 +949,17 @@ class WebRTCAudioService {
             hasConnectedOnce = true;
 
             // ====================================================
-            // CONNECTED → SYNC DENGAN LIVE OPERATOR
+            // CONNECTED → LIVE SYNC
             //
-            // Sinkronkan posisi audio outlet dengan monitor operator yang sedang berjalan.
-            // Saat outlet baru connect atau melakukan reset/reconnect, ia langsung mengikuti
-            // posisi detik live saat ini, bukan memutar ulang dari awal (0:00).
+            // Outlet langsung menerima shared master audio stream.
+            // Tidak perlu membuat audio player terpisah atau manual seek,
+            // suara otomatis sinkron dengan siaran live operator saat ini.
             // ====================================================
 
-            const syncTime = this.monitorAudioElement?.currentTime || 0;
-            if (syncTime > 0 && !isNaN(syncTime)) {
-                try {
-                    audioElement.currentTime = syncTime;
-                    console.log(
-                        `⏱️ Sinkronkan audio outlet ${outletId} ke posisi live operator: ${syncTime.toFixed(1)}s`
-                    );
-                } catch (err) {
-                    console.warn(`⚠️ Gagal sync currentTime ke ${syncTime}:`, err);
-                }
-            }
-
-            await audioElement.play();
-
-            if (syncTime > 0 && !isNaN(syncTime) && Math.abs(audioElement.currentTime - syncTime) > 1.0) {
-                try {
-                    audioElement.currentTime = syncTime;
-                } catch (_) {}
-            }
-
+            const currentPos = (this.monitorAudioElement?.currentTime || 0).toFixed(1);
             console.log(
-                `▶️ Outlet ${outletId} mulai dengar audio pada detik: ${audioElement.currentTime.toFixed(1)}s`
+                `▶️ Outlet ${outletId} terhubung & sinkron dengan siaran live (detik ${currentPos}s)`
             );
-
-            audioElement.onended = () => {
-                // Pastikan audio outlet benar-benar sudah mencapai akhir file
-                if (
-                    audioElement &&
-                    audioElement.duration &&
-                    audioElement.currentTime < audioElement.duration - 1.5
-                ) {
-                    console.warn(
-                        `⚠️ Audio outlet ${outletId} stall pada detik ${audioElement.currentTime.toFixed(1)} / ${audioElement.duration.toFixed(1)}s. Melanjutkan...`
-                    );
-                    audioElement.play().catch(() => {});
-                    return;
-                }
-
-                console.log(
-                    `⏹️ Outlet ${outletId} selesai memutar audio penuh`
-                );
-
-                this.finishOutlet(outletId);
-            };
-
-            audioElement.onstalled = () => {
-                console.warn(`⚠️ Audio outlet ${outletId} stalled, mencoba resume...`);
-                audioElement.play().catch(() => {});
-            };
 
         } catch (error) {
             console.error(
@@ -1459,6 +1401,25 @@ class WebRTCAudioService {
                 null;
 
             this.monitorAudioElement = null;
+        }
+
+        if (this.sharedMediaStream) {
+            try {
+                this.sharedMediaStream.getTracks().forEach((track) => track.stop());
+            } catch (error) {
+                console.error(error);
+            }
+            this.sharedMediaStream = null;
+        }
+
+        if (this.masterAudioContext) {
+            try {
+                this.masterAudioContext.close();
+            } catch (error) {
+                console.error(error);
+            }
+            this.masterAudioContext = null;
+            this.masterDestination = null;
         }
 
         // SEMUA PEER CONNECTION

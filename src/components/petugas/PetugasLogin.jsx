@@ -160,7 +160,7 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
               <label className="block text-xs font-bold tracking-wider uppercase text-neutral-400">
                 Nama Outlet
               </label>
-              <button
+              {/* <button
                 type="button"
                 onClick={() => setShowSettings(!showSettings)}
                 className="text-[11px] text-neutral-500 hover:text-orange-400 flex items-center gap-1 transition-colors"
@@ -168,7 +168,7 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
               >
                 <Settings className="h-3 w-3" />
                 <span>Server API</span>
-              </button>
+              </button> */}
             </div>
 
             {/* Server Settings Drawer */}
@@ -222,7 +222,7 @@ export default function PetugasLogin({ onLoginSuccess, initialOutlet = "" }) {
                 type="text"
                 value={outletName}
                 onChange={(e) => setOutletName(e.target.value)}
-                placeholder="Contoh: Outlet Pusat1"
+                placeholder="Contoh: Outlet Empang"
                 required
                 className="w-full rounded-xl border border-neutral-800 bg-neutral-950/70 py-3 pl-11 pr-4 text-sm font-medium text-white placeholder-neutral-500 transition-all focus:border-orange-500 focus:bg-neutral-950 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
               />

@@ -962,16 +962,35 @@ class WebRTCAudioService {
             hasConnectedOnce = true;
 
             // ====================================================
-            // CONNECTED → PLAY DARI 0:00
+            // CONNECTED → SYNC DENGAN LIVE OPERATOR
             //
-            // Terlepas dari sudah berapa lama outlet lain playing,
-            // outlet ini SELALU mulai dari awal track.
+            // Sinkronkan posisi audio outlet dengan monitor operator yang sedang berjalan.
+            // Saat outlet baru connect atau melakukan reset/reconnect, ia langsung mengikuti
+            // posisi detik live saat ini, bukan memutar ulang dari awal (0:00).
             // ====================================================
+
+            const syncTime = this.monitorAudioElement?.currentTime || 0;
+            if (syncTime > 0 && !isNaN(syncTime)) {
+                try {
+                    audioElement.currentTime = syncTime;
+                    console.log(
+                        `⏱️ Sinkronkan audio outlet ${outletId} ke posisi live operator: ${syncTime.toFixed(1)}s`
+                    );
+                } catch (err) {
+                    console.warn(`⚠️ Gagal sync currentTime ke ${syncTime}:`, err);
+                }
+            }
 
             await audioElement.play();
 
+            if (syncTime > 0 && !isNaN(syncTime) && Math.abs(audioElement.currentTime - syncTime) > 1.0) {
+                try {
+                    audioElement.currentTime = syncTime;
+                } catch (_) {}
+            }
+
             console.log(
-                `▶️ Outlet ${outletId} mulai dengar audio dari 0:00`
+                `▶️ Outlet ${outletId} mulai dengar audio pada detik: ${audioElement.currentTime.toFixed(1)}s`
             );
 
             audioElement.onended = () => {

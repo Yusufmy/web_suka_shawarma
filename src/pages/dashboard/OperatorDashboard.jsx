@@ -1562,66 +1562,53 @@ export default function OperatorDashboard() {
       {/* Content */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 
-       {activeTab === "upload" ? (
+        <div className={activeTab === "upload" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+          <UploadAudio
+              targetMode={targetMode}
+              selected={selected}
+              outlets={outlets}
+              onOutletAudioStateChange={handleOutletAudioStateChange}
+          />
+        </div>
 
-        <UploadAudio
-            targetMode={targetMode}
-            selected={selected}
-            outlets={outlets}
-            onOutletAudioStateChange={handleOutletAudioStateChange}
-        />
+        <div className={activeTab === "link" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+          <UploadLink
+              targetMode={targetMode}
+              selected={selected}
+              outlets={outlets}
+          />
+        </div>
 
-      ) : activeTab === "link" ? (
+        <div className={activeTab === "schedule" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+          <ScheduleAudio />
+        </div>
 
-        <UploadLink
-            targetMode={targetMode}
-            selected={selected}
-            outlets={outlets}
-        />
+        <div className={activeTab === "outlets" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+          <OutletManager />
+        </div>
 
-      ) : activeTab === "schedule" ? (
+        <div className={activeTab === "live" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+          <BroadcastPanel
+              targetMode={targetMode}
+              onTargetModeChange={(mode) => {
+                  setTargetMode(mode);
 
-        <ScheduleAudio />
-
-      ) : activeTab === "outlets" ? (
-
-        <OutletManager />
-
-      ) : (
-
-        
-        // <BroadcastPanel
-        //     targetMode={targetMode}
-        //     onTargetModeChange={setTargetMode}
-        //     isLive={isLive}
-        //     canStart={canStart}
-        //     onStart={handleStart}
-        //     onStop={handleStop}
-        //     duration={duration}
-        //     targetCount={targetCount}
-        //     levels={levels}
-        // />
-        <BroadcastPanel
-            targetMode={targetMode}
-            onTargetModeChange={(mode) => {
-                setTargetMode(mode);
-
-                if (mode === "all") {
-                    setSelected(new Set());
-                }
-            }}
-            isLive={isLive}
-            canStart={canStart}
-            onStart={handleStart}
-            onStop={handleStop}
-            duration={duration}
-            targetCount={targetCount}
-            connectedOutlets={connectedOutlets}
-            levels={levels}
-            devices={devices}
-            selectedDeviceId={selectedDeviceId}
-        />
-      )}
+                  if (mode === "all") {
+                      setSelected(new Set());
+                  }
+              }}
+              isLive={isLive}
+              canStart={canStart}
+              onStart={handleStart}
+              onStop={handleStop}
+              duration={duration}
+              targetCount={targetCount}
+              connectedOutlets={connectedOutlets}
+              levels={levels}
+              devices={devices}
+              selectedDeviceId={selectedDeviceId}
+          />
+        </div>
 
       </div>
 

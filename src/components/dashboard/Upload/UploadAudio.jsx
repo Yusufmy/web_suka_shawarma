@@ -208,6 +208,47 @@ export default function UploadAudio({
   // ============================================================
 
   useEffect(() => {
+    // ----------------------------------------------------------
+    // RESTORE JIKA SUDAH ADA BROADCAST BERJALAN
+    // ----------------------------------------------------------
+    const currentlyPlaying = WebRTCAudioService.getCurrentlyPlaying();
+    if (currentlyPlaying && currentlyPlaying.isPlaying) {
+      setPlayingId(currentlyPlaying.audioId);
+      const percentage =
+        currentlyPlaying.duration > 0
+          ? Math.min(
+              100,
+              Math.max(
+                0,
+                (currentlyPlaying.currentTime / currentlyPlaying.duration) * 100
+              )
+            )
+          : 0;
+      setPlaybackProgress({
+        currentTime: currentlyPlaying.currentTime,
+        duration: currentlyPlaying.duration,
+        percentage,
+      });
+    }
+
+    const handleSyncOnVisible = () => {
+      const current = WebRTCAudioService.getCurrentlyPlaying();
+      if (current && current.isPlaying) {
+        setPlayingId((prev) => (prev !== current.audioId ? current.audioId : prev));
+        const percentage =
+          current.duration > 0
+            ? Math.min(100, Math.max(0, (current.currentTime / current.duration) * 100))
+            : 0;
+        setPlaybackProgress({
+          currentTime: current.currentTime,
+          duration: current.duration,
+          percentage,
+        });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleSyncOnVisible);
+    window.addEventListener("focus", handleSyncOnVisible);
 
     WebRTCAudioService.setProgressCallback(
       ({ currentTime, duration }) => {
@@ -320,11 +361,10 @@ export default function UploadAudio({
     // ----------------------------------------------------------
 
     return () => {
-
-      WebRTCAudioService.setStateListener(
-        null
-      );
-
+      WebRTCAudioService.setStateListener(null);
+      WebRTCAudioService.setProgressCallback(null);
+      document.removeEventListener("visibilitychange", handleSyncOnVisible);
+      window.removeEventListener("focus", handleSyncOnVisible);
     };
 
   }, []);

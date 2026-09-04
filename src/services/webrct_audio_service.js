@@ -71,6 +71,16 @@ class WebRTCAudioService {
         this.outlets = [];
 
         // ========================================================
+        // PLAYBACK STATE TRACKING
+        // ========================================================
+
+        this.audioId = null;
+        this.audioName = null;
+        this.audioUrl = null;
+        this.isBroadcasting = false;
+        this.progressInterval = null;
+
+        // ========================================================
         // CALLBACK
         // ========================================================
 
@@ -88,6 +98,27 @@ class WebRTCAudioService {
 
     setProgressCallback(callback) {
         this.onProgress = callback;
+        // Langsung panggil dengan progress saat ini jika sedang ada audio berjalan
+        if (callback && this.monitorAudioElement && !this.monitorAudioElement.paused) {
+            const currentTime = this.monitorAudioElement.currentTime || 0;
+            const duration = this.monitorAudioElement.duration || 0;
+            callback({ currentTime, duration });
+        }
+    }
+
+    getCurrentlyPlaying() {
+        if (!this.monitorAudioElement || !this.isBroadcasting) {
+            return null;
+        }
+        return {
+            audioId: this.audioId,
+            audioName: this.audioName,
+            audioUrl: this.audioUrl,
+            roomId: this.roomId,
+            currentTime: this.monitorAudioElement.currentTime || 0,
+            duration: this.monitorAudioElement.duration || 0,
+            isPlaying: !this.monitorAudioElement.paused && !this.monitorAudioElement.ended,
+        };
     }
 
     getPlaybackProgress() {
@@ -360,6 +391,9 @@ class WebRTCAudioService {
             this.roomId = roomId;
             this.outlets = outlets;
             this.audioUrl = audioUrl;
+            this.audioId = audioId;
+            this.audioName = audioName;
+            this.isBroadcasting = true;
 
             // ====================================================
             // VALIDATION
@@ -442,6 +476,17 @@ class WebRTCAudioService {
                     this.onProgress({ currentTime, duration });
                 }
             };
+
+            if (this.progressInterval) {
+                clearInterval(this.progressInterval);
+            }
+            this.progressInterval = setInterval(() => {
+                if (this.onProgress && this.monitorAudioElement && !this.monitorAudioElement.paused) {
+                    const currentTime = this.monitorAudioElement.currentTime || 0;
+                    const duration = this.monitorAudioElement.duration || 0;
+                    this.onProgress({ currentTime, duration });
+                }
+            }, 500);
 
             this.monitorAudioElement.onended = async () => {
                 // Pastikan audio benar-benar sudah mencapai akhir file (bukan buffer stall prematur)
@@ -1404,6 +1449,14 @@ class WebRTCAudioService {
         // aliran RTP ke outlet SAAT INI JUGA, tidak perlu menunggu
         // jaringan sama sekali.
         // ========================================================
+
+        if (this.progressInterval) {
+            clearInterval(this.progressInterval);
+            this.progressInterval = null;
+        }
+        this.isBroadcasting = false;
+        this.audioId = null;
+        this.audioName = null;
 
         // MONITOR AUDIO
 

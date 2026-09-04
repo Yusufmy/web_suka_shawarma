@@ -182,17 +182,19 @@ export default function OperatorDashboard() {
           return;
       }
 
+      const id = Number(outletId);
+
       setPlayingOutletIds((prev) => {
           const next = new Set(prev);
 
           if (state === "connected") {
-              next.add(outletId);
+              next.add(id);
           } else if (
               state === "disconnected" ||
               state === "failed" ||
               state === "closed"
           ) {
-              next.delete(outletId);
+              next.delete(id);
           }
 
           return next;
@@ -1105,10 +1107,12 @@ export default function OperatorDashboard() {
                   { outletId, state }
               );
 
+              const id = Number(outletId);
+
               if (state === "connected") {
 
                   console.log(
-                      `🎉 Outlet ${outletId} connected!`
+                      `🎉 Outlet ${id} connected!`
                   );
 
                   clearTimeout(
@@ -1116,7 +1120,7 @@ export default function OperatorDashboard() {
                   );
 
                   connectedOutletIdsRef.current.add(
-                      outletId
+                      id
                   );
 
                   setConnectedOutlets(
@@ -1141,7 +1145,7 @@ export default function OperatorDashboard() {
               ) {
 
                   connectedOutletIdsRef.current.delete(
-                      outletId
+                      id
                   );
 
                   setConnectedOutlets(
@@ -1448,6 +1452,36 @@ export default function OperatorDashboard() {
               )
           );
       });
+
+      // ========================================================
+      // OUTLET AUDIO PLAYBACK STATUS (playing/ended/paused)
+      // Diterima langsung saat outlet (Web Petugas / Mobile)
+      // memutar suara siaran atau selesai
+      // ========================================================
+
+      const handleOutletAudioStatus = (data) => {
+          console.log("🎵 OUTLET AUDIO STATUS RECEIVED:", data);
+          if (!data?.outlet_id) return;
+          const id = Number(data.outlet_id);
+          setPlayingOutletIds((prev) => {
+              const next = new Set(prev);
+              if (data.status === "playing") {
+                  next.add(id);
+              } else if (
+                  data.status === "ended" ||
+                  data.status === "paused" ||
+                  data.status === "stopped"
+              ) {
+                  next.delete(id);
+              }
+              return next;
+          });
+      };
+
+      channel.listen(".outlet.audio.status", handleOutletAudioStatus);
+      channel.listen("outlet.audio.status", handleOutletAudioStatus);
+      channel.listen(".OutletAudioPlaybackUpdated", handleOutletAudioStatus);
+      channel.listen("OutletAudioPlaybackUpdated", handleOutletAudioStatus);
 
       // ========================================================
       // Broadcast (siaran langsung ATAU audio-file) berakhir -

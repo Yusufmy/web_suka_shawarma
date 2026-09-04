@@ -24,6 +24,8 @@ export default function PetugasWaiting({
   onLogout,
   wsConnected = true,
   isConnectingAudio = false,
+  autoplayBlocked = false,
+  onUnlockAudio,
 }) {
   const [isPlayingTestTone, setIsPlayingTestTone] = useState(false);
 
@@ -128,17 +130,23 @@ export default function PetugasWaiting({
               : "Koneksi WebSocket aktif. Begitu Operator Pusat memulai siaran bicara atau memutar audio, suara akan otomatis diputar di sini."}
           </p>
 
-          {isConnectingAudio && (
+          {(isConnectingAudio || autoplayBlocked) && (
             <button
               onClick={() => {
+                if (petugasReceiver.audioContext && petugasReceiver.audioContext.state === "suspended") {
+                  petugasReceiver.audioContext.resume().catch(() => {});
+                }
                 if (petugasReceiver.audioElement) {
+                  petugasReceiver.audioElement.muted = false;
+                  petugasReceiver.audioElement.volume = volume;
                   petugasReceiver.audioElement.play().catch((e) => console.warn(e));
                 }
+                onUnlockAudio?.();
               }}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs px-4 py-2.5 shadow-lg shadow-orange-500/20 transition-all active:scale-95 animate-pulse"
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold text-xs px-5 py-3 shadow-lg shadow-emerald-500/20 transition-all active:scale-95 animate-pulse cursor-pointer"
             >
               <Volume2 className="h-4 w-4" />
-              <span>Ketuk untuk Memutar Suara</span>
+              <span>🔊 Siaran Masuk — Ketuk untuk Dengarkan Suara</span>
             </button>
           )}
         </div>

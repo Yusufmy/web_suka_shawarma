@@ -47,6 +47,7 @@ export default function PetugasPage() {
 
   const [broadcastData, setBroadcastData] = useState(null);
   const [isConnectingAudio, setIsConnectingAudio] = useState(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
 
   const [volume, setVolume] = useState(() => {
     const savedVol = safeStorage.get("petugas_volume");
@@ -77,11 +78,19 @@ export default function PetugasPage() {
       setIsConnectingAudio(true);
     };
 
+    // 1.1 Autoplay diblokir browser -> Tampilkan tombol interaktif untuk klik buka audio
+    petugasReceiver.onAutoplayBlocked = (data) => {
+      console.warn("⚠️ Autoplay audio terblokir oleh browser, butuh interaksi user.");
+      setBroadcastData(data);
+      setAutoplayBlocked(true);
+    };
+
     // 2. Audio track & WebRTC SUDAH BERSUARA di speaker -> Baru beralih ke tampilan LIVE
     petugasReceiver.onAudioConnected = (data) => {
       console.log("🔊 Audio WebRTC SUDAH BERSUARA -> Beralih ke tampilan LIVE!");
       setBroadcastData(data);
       setIsConnectingAudio(false);
+      setAutoplayBlocked(false);
       setCurrentView("live");
     };
 
@@ -89,6 +98,7 @@ export default function PetugasPage() {
     petugasReceiver.onBroadcastEnded = () => {
       console.log("🛑 Event Siaran Berakhir, kembali ke STANDBY");
       setIsConnectingAudio(false);
+      setAutoplayBlocked(false);
       setBroadcastData(null);
       setCurrentView("waiting");
     };
@@ -178,6 +188,7 @@ export default function PetugasPage() {
             onLogout={handleLogout}
             wsConnected={petugasReceiver.isListening}
             isConnectingAudio={isConnectingAudio}
+            autoplayBlocked={autoplayBlocked}
           />
         )}
 

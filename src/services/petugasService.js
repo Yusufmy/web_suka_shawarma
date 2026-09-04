@@ -206,6 +206,21 @@ export const petugasService = {
       device_id: deviceId || getOrCreateDeviceId(),
     });
   },
+
+  // 10. Kirim status playback audio/siaran ke Operator
+  async sendPlaybackStatus({ outletId, status, roomId = null }) {
+    try {
+      const client = getClient();
+      return await client.post("/outlet/playback-status", {
+        outlet_id: Number(outletId),
+        status,
+        room_id: roomId,
+      });
+    } catch (error) {
+      console.warn("Gagal mengirim playback status:", error.message);
+      return null;
+    }
+  },
 };
 
 export default petugasService;

@@ -259,31 +259,25 @@ class WebRTCService {
             return;
         }
 
-        // Jika peer ini mengirim sinyal ready baru (misal karena refresh halaman atau reconnect),
-        // cek apakah koneksi lama masih aktif atau sedang dalam proses negosiasi.
+        // Cegah spam offer beruntun dalam rentang 1.5 detik
+        if (!this.lastOfferTime) {
+            this.lastOfferTime = new Map();
+        }
+        const lastSent = this.lastOfferTime.get(peerKey) || 0;
+        if (Date.now() - lastSent < 1500) {
+            console.log(
+                `⏳ Peer ${peerKey} baru saja dikirimi Offer (< 1.5s), tunggu respon sebelum kirim ulang.`
+            );
+            return;
+        }
+
+        // Jika peer ini mengirim sinyal ready baru (misal karena refresh halaman atau klik Reset),
+        // reset koneksi lama dan buatkan Offer baru seketika.
         if (this.peerConnections.has(peerKey) || (!deviceId && (this.peerConnections.has(id) || this.peerConnections.has(String(outletId))))) {
             const oldPc = this.peerConnections.get(peerKey) || this.peerConnections.get(id) || this.peerConnections.get(String(outletId));
             
-            // JIKA KONEKSI MASIH AKTIF (connected, connecting, new) DAN BELUM CLOSED, JANGAN DIRESET!
-            if (oldPc && (oldPc.connectionState === "connected" || oldPc.connectionState === "connecting" || oldPc.connectionState === "new")) {
-                if (oldPc.signalingState !== "closed") {
-                    console.log(
-                        `ℹ️ Peer ${peerKey} sudah aktif (connectionState='${oldPc.connectionState}', signaling='${oldPc.signalingState}'), abaikan sinyal ready berulang.`
-                    );
-                    return;
-                }
-            }
-            
-            // JIKA OFFER BARU SAJA DIKIRIM DAN SEDANG MENUNGGU ANSWER, JANGAN DIRESET!
-            if (oldPc && oldPc.signalingState === "have-local-offer") {
-                console.log(
-                    `ℹ️ Peer ${peerKey} sudah dikirimkan offer dan sedang menunggu answer (signalingState: have-local-offer), abaikan sinyal ready berulang.`
-                );
-                return;
-            }
-
             console.log(
-                `🔄 Peer ${peerKey} koneksi lama terputus/perlu dibuat ulang (state: ${oldPc?.connectionState}, signaling: ${oldPc?.signalingState}). Mereset koneksi lama & membuat Offer baru...`
+                `🔄 Peer ${peerKey} meminta reconnect/Offer baru (state lama: ${oldPc?.connectionState}). Mereset koneksi lama & membuat Offer baru...`
             );
             if (oldPc) {
                 try {
@@ -446,8 +440,9 @@ class WebRTCService {
             );
 
             // ------------------------------------------------------
-            // SEND OFFER
-            // ------------------------------------------------------
+            if (this.lastOfferTime) {
+                this.lastOfferTime.set(peerKey, Date.now());
+            }
 
             await axios.post(
                 `${API_URL}/webrtc/offer`,

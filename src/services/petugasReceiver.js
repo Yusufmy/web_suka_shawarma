@@ -122,6 +122,15 @@ class PetugasReceiver {
       }
     }
 
+    if (this.outlet?.id && this.currentBroadcast) {
+      const roomId = this.currentBroadcast?.rtc_room_id || this.currentBroadcast?.room_id || this.currentRoomId;
+      petugasService.sendPlaybackStatus({
+        outletId: this.outlet.id,
+        status: "ended",
+        roomId: roomId || null,
+      }).catch(() => {});
+    }
+
     if (this.currentAudioSource) {
       try {
         this.currentAudioSource.disconnect();
@@ -141,6 +150,16 @@ class PetugasReceiver {
       this.audioElement.onplaying = () => {
         console.log("🔊 <audio> ONPLAYING: Audio benar-benar bersuara di speaker! -> Beralih ke layar LIVE");
         
+        // Kirim status playback 'playing' ke Operator Dashboard
+        if (this.outlet?.id) {
+          const roomId = this.currentBroadcast?.rtc_room_id || this.currentBroadcast?.room_id || this.currentRoomId;
+          petugasService.sendPlaybackStatus({
+            outletId: this.outlet.id,
+            status: "playing",
+            roomId: roomId || null,
+          }).catch(() => {});
+        }
+
         // Daftarkan ke MediaSession browser agar audio tetap berjalan di background / lock screen
         if ("mediaSession" in navigator) {
           try {
@@ -359,6 +378,13 @@ class PetugasReceiver {
       if (videoId) {
         console.log("🎬 Memutar siaran YouTube langsung di outlet:", videoId);
         this.startBackgroundAudioKeepAlive(data.title || "Siaran YouTube");
+        if (this.outlet?.id) {
+          petugasService.sendPlaybackStatus({
+            outletId: this.outlet.id,
+            status: "playing",
+            roomId: data.rtc_room_id || null,
+          }).catch(() => {});
+        }
         if (this.onAudioConnected) {
           this.onAudioConnected(data);
         }
@@ -454,6 +480,9 @@ class PetugasReceiver {
 
       this.audioElement.play().catch((err) => {
         console.warn("Autoplay audio file terblokir (butuh klik user):", err);
+        if (this.onAutoplayBlocked) {
+          this.onAutoplayBlocked(data);
+        }
       });
     }
   }
@@ -481,6 +510,15 @@ class PetugasReceiver {
     }
 
     console.log("🛑 Siaran saat ini berakhir, kembali ke standby");
+    if (this.outlet?.id) {
+      const finishRoomId = endRoomId || this.currentRoomId;
+      petugasService.sendPlaybackStatus({
+        outletId: this.outlet.id,
+        status: "ended",
+        roomId: finishRoomId || null,
+      }).catch(() => {});
+    }
+
     this.cleanupAudioPlayback();
     this.clearReadyRetry();
     this.leaveRoomChannel();
@@ -653,6 +691,9 @@ class PetugasReceiver {
 
         this.audioElement.play().catch((err) => {
           console.warn("⚠️ Autoplay dicegah browser (butuh klik):", err);
+          if (this.onAutoplayBlocked) {
+            this.onAutoplayBlocked(this.currentBroadcast);
+          }
         });
       }
 

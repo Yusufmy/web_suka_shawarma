@@ -31,7 +31,9 @@ import {
   Trash2,
   Cpu,
   Database,
-  HardDrive
+  HardDrive,
+  ThumbsUp,
+  Headphones,
 } from "lucide-react";
 import echo from "../../websocket/echo";
 import api from "../../services/api";
@@ -54,6 +56,11 @@ export default function MasterDevPage() {
 
   // Connected peers tracked from real-time events
   const [connectedPeers, setConnectedPeers] = useState(new Map()); // key: outletId_deviceId -> { readyAt, answerAt, isConnected }
+
+  // Outlet state tracking: suara aktif (playing), live mic (listening), konfirmasi (thumbs up)
+  const [playingOutletIds, setPlayingOutletIds] = useState(new Set());
+  const [listeningOutletIds, setListeningOutletIds] = useState(new Set());
+  const [confirmedOutletIds, setConfirmedOutletIds] = useState(new Set());
 
   const timerRef = useRef(null);
   const activeRoomChannelRef = useRef(null);
@@ -82,6 +89,10 @@ export default function MasterDevPage() {
         setBroadcast(bcRes.data.data);
       } else {
         setBroadcast(null);
+        setPlayingOutletIds(new Set());
+        setListeningOutletIds(new Set());
+        setConfirmedOutletIds(new Set());
+        setConnectedPeers(new Map());
       }
 
       // Fetch all outlets
@@ -166,43 +177,46 @@ export default function MasterDevPage() {
       addLog("ws", "Channel Subscribed", "outlets");
     });
 
+    const resetBroadcastState = (title, data, newBroadcast = null) => {
+      addLog("broadcast", title, data);
+      setBroadcast(newBroadcast);
+      setConnectedPeers(new Map());
+      setPlayingOutletIds(new Set());
+      setListeningOutletIds(new Set());
+      setConfirmedOutletIds(new Set());
+    };
+
     // 1. Live Mic Started
     outletsChannel.listen(".broadcast.started", (data) => {
-      addLog("broadcast", "🎙️ Siaran Mic Dimulai", data);
-      setBroadcast(data);
-      setConnectedPeers(new Map());
+      resetBroadcastState("🎙️ Siaran Mic Dimulai", data, data);
     });
 
     // 2. Live Mic Ended
     outletsChannel.listen(".broadcast.ended", (data) => {
-      addLog("broadcast", "🛑 Siaran Mic Berakhir", data);
-      setBroadcast(null);
-      setConnectedPeers(new Map());
+      resetBroadcastState("🛑 Siaran Mic Berakhir", data, null);
     });
 
     // 3. Audio File Started
     outletsChannel.listen(".audio.broadcast.started", (data) => {
-      addLog("broadcast", "🎵 Siaran Audio Dimulai", data);
-      setBroadcast(data);
-      setConnectedPeers(new Map());
+      resetBroadcastState("🎵 Siaran Audio Dimulai", data, data);
     });
 
     // 4. Audio File Ended
     outletsChannel.listen(".audio.broadcast.ended", (data) => {
-      addLog("broadcast", "🛑 Siaran Audio Berakhir", data);
-      setBroadcast(null);
-      setConnectedPeers(new Map());
+      resetBroadcastState("🛑 Siaran Audio Berakhir", data, null);
     });
 
-    // 5. Receiver Ready (from outlets)
-    outletsChannel.listen(".webrtc.receiver.ready", (data) => {
+    // 5. Receiver Ready (Live Mic & Audio Stream)
+    const handleReceiverReady = (data) => {
       addLog("webrtc", "🎉 Outlet Ready Sinyal", data);
       if (data?.outlet_id) {
-        const key = `${data.outlet_id}_${data.device_id || "default"}`;
+        const id = Number(data.outlet_id);
+        setListeningOutletIds((prev) => new Set(prev).add(id));
+        const key = `${id}_${data.device_id || "default"}`;
         setConnectedPeers((prev) => {
           const next = new Map(prev);
           next.set(key, {
-            outletId: data.outlet_id,
+            outletId: id,
             deviceId: data.device_id,
             readyAt: new Date().toLocaleTimeString(),
             status: "ready",
@@ -210,9 +224,50 @@ export default function MasterDevPage() {
           return next;
         });
       }
-    });
+    };
+    outletsChannel.listen(".webrtc.receiver.ready", handleReceiverReady);
+    outletsChannel.listen("webrtc.receiver.ready", handleReceiverReady);
+    outletsChannel.listen(".audio.webrtc.receiver-ready", handleReceiverReady);
+    outletsChannel.listen("audio.webrtc.receiver-ready", handleReceiverReady);
 
-    // 6. Presence / Heartbeat update
+    // 6. Outlet Audio Playback Status (playing, ended, paused, stopped)
+    const handleAudioStatus = (data) => {
+      addLog("audio", `🎵 Outlet ${data?.outlet_id} Status: ${data?.status}`, data);
+      if (!data?.outlet_id) return;
+      const id = Number(data.outlet_id);
+      setPlayingOutletIds((prev) => {
+        const next = new Set(prev);
+        if (data.status === "playing") {
+          next.add(id);
+        } else if (
+          data.status === "ended" ||
+          data.status === "paused" ||
+          data.status === "stopped" ||
+          data.status === "error"
+        ) {
+          next.delete(id);
+        }
+        return next;
+      });
+    };
+    outletsChannel.listen(".outlet.audio.status", handleAudioStatus);
+    outletsChannel.listen("outlet.audio.status", handleAudioStatus);
+    outletsChannel.listen(".OutletAudioPlaybackUpdated", handleAudioStatus);
+    outletsChannel.listen("OutletAudioPlaybackUpdated", handleAudioStatus);
+
+    // 7. Outlet Thumbs Up (Konfirmasi Suara Sudah Benar-benar Keluar di Outlet)
+    const handleThumbsUp = (data) => {
+      addLog("thumbs_up", `👍 Outlet ${data?.outlet_name || data?.outlet_id} Konfirmasi Suara Keluar`, data);
+      if (!data?.outlet_id) return;
+      const id = Number(data.outlet_id);
+      setConfirmedOutletIds((prev) => new Set(prev).add(id));
+      setPlayingOutletIds((prev) => new Set(prev).add(id));
+      setListeningOutletIds((prev) => new Set(prev).add(id));
+    };
+    outletsChannel.listen(".outlet.thumbs.up", handleThumbsUp);
+    outletsChannel.listen("outlet.thumbs.up", handleThumbsUp);
+
+    // 8. Presence / Heartbeat update
     outletsChannel.listen(".outlet.presence.updated", (data) => {
       if (data?.outlet_id) {
         setOutlets((prev) =>
@@ -237,24 +292,28 @@ export default function MasterDevPage() {
     };
   }, []);
 
-  // 3. Listen to Active Broadcast Room Channel
+  // 3. Listen to Active Broadcast Room Channel (Live Mic atau Audio File)
   useEffect(() => {
-    if (!broadcast?.rtc_room_id || !echo) return;
+    const roomId = broadcast?.rtc_room_id || broadcast?.room_id;
+    if (!roomId || !echo) return;
 
-    const roomChannelName = `broadcast.${broadcast.rtc_room_id}`;
+    const isAudioUpload = broadcast.type === "upload";
+    const roomChannelName = isAudioUpload ? `audio.${roomId}` : `broadcast.${roomId}`;
     const roomChannel = echo.channel(roomChannelName);
     activeRoomChannelRef.current = roomChannel;
 
-    addLog("ws", "Subscribing Broadcast Room", roomChannelName);
+    addLog("ws", "Subscribing Broadcast Room", `${roomChannelName} (${broadcast.type || "live"})`);
 
-    // Answer from outlet
+    // WebRTC Answer from outlet
     const handleAnswer = (data) => {
       addLog("webrtc", "📥 WebRTC Answer Masuk", data);
       if (data?.outlet_id) {
-        const key = `${data.outlet_id}_${data.device_id || "default"}`;
+        const id = Number(data.outlet_id);
+        setListeningOutletIds((prev) => new Set(prev).add(id));
+        const key = `${id}_${data.device_id || "default"}`;
         setConnectedPeers((prev) => {
           const next = new Map(prev);
-          const existing = next.get(key) || { outletId: data.outlet_id, deviceId: data.device_id };
+          const existing = next.get(key) || { outletId: id, deviceId: data.device_id };
           next.set(key, {
             ...existing,
             answerAt: new Date().toLocaleTimeString(),
@@ -266,6 +325,31 @@ export default function MasterDevPage() {
     };
     roomChannel.listen(".webrtc.answer", handleAnswer);
     roomChannel.listen("webrtc.answer", handleAnswer);
+    roomChannel.listen(".audio.webrtc.answer", handleAnswer);
+    roomChannel.listen("audio.webrtc.answer", handleAnswer);
+
+    // Outlet Audio Status on Room Channel
+    const handleRoomAudioStatus = (data) => {
+      addLog("audio", `🎵 Room Audio Status: ${data?.status} (Outlet ${data?.outlet_id})`, data);
+      if (!data?.outlet_id) return;
+      const id = Number(data.outlet_id);
+      setPlayingOutletIds((prev) => {
+        const next = new Set(prev);
+        if (data.status === "playing") {
+          next.add(id);
+        } else if (
+          data.status === "ended" ||
+          data.status === "paused" ||
+          data.status === "stopped" ||
+          data.status === "error"
+        ) {
+          next.delete(id);
+        }
+        return next;
+      });
+    };
+    roomChannel.listen(".outlet.audio.status", handleRoomAudioStatus);
+    roomChannel.listen("outlet.audio.status", handleRoomAudioStatus);
 
     // ICE Candidate
     const handleIce = (data) => {
@@ -273,13 +357,15 @@ export default function MasterDevPage() {
     };
     roomChannel.listen(".webrtc.ice", handleIce);
     roomChannel.listen("webrtc.ice", handleIce);
+    roomChannel.listen(".audio.webrtc.ice", handleIce);
+    roomChannel.listen("audio.webrtc.ice", handleIce);
 
     return () => {
       if (echo && roomChannelName) {
         echo.leaveChannel(roomChannelName);
       }
     };
-  }, [broadcast?.rtc_room_id]);
+  }, [broadcast?.rtc_room_id, broadcast?.room_id, broadcast?.type]);
 
   // Format Duration seconds -> MM:SS
   const formatDuration = (seconds) => {
@@ -297,6 +383,14 @@ export default function MasterDevPage() {
     return broadcast.outlet_ids.map(String).includes(String(outletId));
   };
 
+  const isOutletReceiving = (outletId) => {
+    const id = Number(outletId);
+    const isAudioPlaying = playingOutletIds.has(id);
+    const isListeningLive = listeningOutletIds.has(id);
+    const hasPeer = Array.from(connectedPeers.values()).some((p) => Number(p.outletId) === id);
+    return isAudioPlaying || isListeningLive || hasPeer;
+  };
+
   // Filtered outlets
   const filteredOutlets = outlets.filter((outlet) => {
     const matchSearch =
@@ -305,17 +399,16 @@ export default function MasterDevPage() {
 
     if (!matchSearch) return false;
 
-    const isLiveConnected = Array.from(connectedPeers.values()).some(
-      (p) => Number(p.outletId) === Number(outlet.id)
-    );
+    const isReceiving = isOutletReceiving(outlet.id);
 
     if (filterStatus === "online") return outlet.status === "online" || outlet.presence === "foreground";
-    if (filterStatus === "live_connected") return isLiveConnected;
+    if (filterStatus === "live_connected") return isReceiving;
     if (filterStatus === "offline") return outlet.status === "offline" && outlet.presence !== "foreground";
     return true;
   });
 
   const totalOnline = outlets.filter((o) => o.status === "online" || o.presence === "foreground").length;
+  const totalReceiving = outlets.filter((o) => isOutletReceiving(o.id)).length;
   const totalTargeted = broadcast
     ? broadcast.target_mode === "all"
       ? outlets.length
@@ -537,9 +630,21 @@ export default function MasterDevPage() {
               <div className="text-[11px] font-medium text-neutral-400 mt-1">Outlet Online / Aktif</div>
             </div>
 
-            <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
-              <div className="text-2xl font-black text-orange-400">{connectedPeers.size}</div>
-              <div className="text-[11px] font-medium text-neutral-400 mt-1">WebRTC Ready Peers</div>
+            <div className={`p-4 rounded-xl border transition-all ${
+              totalReceiving > 0
+                ? "bg-emerald-950/25 border-emerald-500/40 shadow-sm shadow-emerald-950/30 ring-1 ring-emerald-500/20"
+                : "bg-neutral-950 border-neutral-800"
+            }`}>
+              <div className="text-2xl font-black text-emerald-400 flex items-center gap-2">
+                <span>{totalReceiving}</span>
+                {totalReceiving > 0 && (
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                  </span>
+                )}
+              </div>
+              <div className="text-[11px] font-medium text-emerald-300 mt-1">Outlet Bersuara / Mendengarkan</div>
             </div>
 
             <div className="bg-neutral-950 p-4 rounded-xl border border-neutral-800">
@@ -564,7 +669,7 @@ export default function MasterDevPage() {
               Monitoring Semua Outlet ({filteredOutlets.length} / {outlets.length})
             </h2>
             <p className="text-xs text-neutral-400">
-              Status kehadiran, jenis perangkat login, dan sambungan WebRTC tiap cabang
+              Status kehadiran, jenis perangkat login, dan konfirmasi suara keluar tiap cabang
             </p>
           </div>
 
@@ -597,15 +702,23 @@ export default function MasterDevPage() {
                   filterStatus === "online" ? "bg-emerald-500/20 text-emerald-400" : "text-neutral-400 hover:text-neutral-200"
                 }`}
               >
-                Online
+                Online ({totalOnline})
               </button>
               <button
                 onClick={() => setFilterStatus("live_connected")}
-                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
-                  filterStatus === "live_connected" ? "bg-orange-500/20 text-orange-400" : "text-neutral-400 hover:text-neutral-200"
+                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  filterStatus === "live_connected"
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm"
+                    : "text-neutral-400 hover:text-neutral-200"
                 }`}
               >
-                Tersambung Live
+                <span className="relative flex h-1.5 w-1.5">
+                  {totalReceiving > 0 && (
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                  )}
+                  <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${totalReceiving > 0 ? "bg-emerald-500" : "bg-neutral-600"}`}></span>
+                </span>
+                <span>Bersuara ({totalReceiving})</span>
               </button>
               <button
                 onClick={() => setFilterStatus("offline")}
@@ -622,19 +735,23 @@ export default function MasterDevPage() {
         {/* Outlet Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {filteredOutlets.map((outlet) => {
+            const outletId = Number(outlet.id);
             const isOnline = outlet.status === "online" || outlet.presence === "foreground";
             const isTargeted = isOutletTargeted(outlet.id);
             const peerData = Array.from(connectedPeers.values()).find(
-              (p) => Number(p.outletId) === Number(outlet.id)
+              (p) => Number(p.outletId) === outletId
             );
-            const isWebRTCConnected = !!peerData;
+            const isAudioPlaying = playingOutletIds.has(outletId);
+            const isListeningLive = listeningOutletIds.has(outletId) || (peerData && peerData.status === "connected");
+            const audioConfirmed = confirmedOutletIds.has(outletId);
+            const isReceiving = isAudioPlaying || isListeningLive;
 
             return (
               <div
                 key={outlet.id}
-                className={`rounded-xl border p-4 transition-all ${
-                  isWebRTCConnected
-                    ? "border-orange-500/40 bg-orange-500/5 shadow-lg shadow-orange-500/5"
+                className={`rounded-xl border p-4 transition-all relative overflow-hidden ${
+                  isReceiving
+                    ? "border-emerald-500/50 bg-emerald-950/25 shadow-lg shadow-emerald-950/30 ring-1 ring-emerald-500/30"
                     : isOnline
                     ? "border-neutral-800 bg-neutral-950/60 hover:border-neutral-700"
                     : "border-neutral-800/40 bg-neutral-950/30 opacity-75"
@@ -642,17 +759,40 @@ export default function MasterDevPage() {
               >
                 {/* Header */}
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <div>
-                    <h4 className="text-sm font-bold text-white truncate" title={outlet.name}>
-                      {outlet.name}
+                  <div className="min-w-0 flex-1">
+                    <h4
+                      className={`text-sm font-bold truncate flex items-center gap-1.5 ${
+                        isReceiving ? "text-emerald-300 font-extrabold" : "text-white"
+                      }`}
+                      title={outlet.name}
+                    >
+                      <span className="truncate">{outlet.name}</span>
+                      {audioConfirmed && (
+                        <span
+                          title="Outlet konfirmasi suara sudah keluar (Thumbs Up)"
+                          className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300"
+                        >
+                          <ThumbsUp size={10} className="text-emerald-400" />
+                          <span>Suara OK</span>
+                        </span>
+                      )}
                     </h4>
-                    <div className="text-[11px] font-mono text-neutral-400">{outlet.code || `ID: ${outlet.id}`}</div>
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono text-neutral-400">
+                      <span>{outlet.code || `ID: ${outlet.id}`}</span>
+                      {outlet.app_version && (
+                        <span className="rounded bg-neutral-800/80 px-1 py-0.2 text-[9px] text-neutral-400">
+                          v{outlet.app_version}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Presence Pill */}
                   <span
                     className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                      outlet.presence === "foreground"
+                      isReceiving
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                        : outlet.presence === "foreground"
                         ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                         : isOnline
                         ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
@@ -661,19 +801,51 @@ export default function MasterDevPage() {
                   >
                     <span
                       className={`h-1.5 w-1.5 rounded-full ${
-                        outlet.presence === "foreground"
+                        isReceiving
+                          ? "bg-emerald-400 animate-ping"
+                          : outlet.presence === "foreground"
                           ? "bg-emerald-400 animate-pulse"
                           : isOnline
                           ? "bg-blue-400"
                           : "bg-neutral-500"
                       }`}
                     />
-                    {outlet.presence === "foreground" ? "Foreground" : isOnline ? "Online" : "Offline"}
+                    {isReceiving
+                      ? "Mendengarkan"
+                      : outlet.presence === "foreground"
+                      ? "Foreground"
+                      : isOnline
+                      ? "Online"
+                      : "Offline"}
                   </span>
                 </div>
 
+                {/* Sinyal Hijau Mendengarkan di BAWAH Nama (persis seperti Sidebar OutletItem) */}
+                {isReceiving && (
+                  <div className="mb-2 flex items-center">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 shadow-sm shadow-emerald-500/10">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                      </span>
+                      {broadcast?.type === "upload" ? (
+                        <Volume2 size={11} className="flex-shrink-0 text-emerald-400 animate-pulse" />
+                      ) : (
+                        <Headphones size={11} className="flex-shrink-0 text-emerald-400 animate-pulse" />
+                      )}
+                      Mendengarkan Siaran
+                    </span>
+                  </div>
+                )}
+
                 {/* Live Broadcast Connection Status */}
-                <div className="my-2.5 p-2 rounded-lg bg-neutral-900/90 border border-neutral-800/80 text-xs">
+                <div
+                  className={`my-2 p-2.5 rounded-xl border text-xs transition-colors ${
+                    isReceiving
+                      ? "bg-emerald-950/40 border-emerald-500/40 shadow-sm shadow-emerald-950/20"
+                      : "bg-neutral-900/90 border border-neutral-800/80"
+                  }`}
+                >
                   <div className="text-[10px] font-semibold text-neutral-400 flex items-center justify-between">
                     <span>Status Siaran Audio:</span>
                     {isTargeted ? (
@@ -683,22 +855,37 @@ export default function MasterDevPage() {
                     )}
                   </div>
 
-                  <div className="mt-1 flex items-center gap-1.5 font-bold">
-                    {isWebRTCConnected ? (
-                      <div className="flex items-center gap-1.5 text-emerald-400">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        <span>Tersambung (Menerima Suara)</span>
+                  <div className="mt-1.5 flex items-center justify-between">
+                    {isReceiving ? (
+                      <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                        <span className="relative flex h-2 w-2">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                        </span>
+                        {broadcast?.type === "upload" ? (
+                          <Volume2 className="h-4 w-4 text-emerald-400 animate-pulse shrink-0" />
+                        ) : (
+                          <Headphones className="h-4 w-4 text-emerald-400 animate-pulse shrink-0" />
+                        )}
+                        <span>Tersambung (Suara Aktif)</span>
                       </div>
                     ) : broadcast && isTargeted ? (
-                      <div className="flex items-center gap-1.5 text-amber-400 animate-pulse">
+                      <div className="flex items-center gap-1.5 text-amber-400 animate-pulse font-bold">
                         <Activity className="h-3.5 w-3.5" />
                         <span>Menunggu Sinyal / Menghubungkan</span>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5 text-neutral-500">
+                      <div className="flex items-center gap-1.5 text-neutral-500 font-medium">
                         <VolumeX className="h-3.5 w-3.5" />
                         <span>Standby (Tidak Live)</span>
                       </div>
+                    )}
+
+                    {audioConfirmed && (
+                      <span className="text-[10px] font-bold text-emerald-300 bg-emerald-900/70 border border-emerald-500/40 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                        Terdengar
+                      </span>
                     )}
                   </div>
                 </div>

@@ -254,6 +254,7 @@ class WebRTCAudioService {
         audioName,
         audioUrl,
         outlets = [],
+        targetMode = "all",
     }) {
         // Pakai instance `api` (bukan axios polos) - endpoint ini
         // sekarang butuh token operator, supaya broadcast audio-file
@@ -271,12 +272,15 @@ class WebRTCAudioService {
                     url: audioUrl,
                 },
 
+                target_mode: targetMode,
+
                 // Outlet yang benar-benar jadi target broadcast
                 // ini, supaya outlet lain yang bukan target
                 // tidak ikut pindah ke halaman broadcast.
-                outlet_ids: outlets.map(
-                    (outlet) => outlet.id
-                ),
+                outlet_ids:
+                    targetMode === "all"
+                        ? []
+                        : outlets.map((outlet) => outlet.id),
             }
         );
 
@@ -353,6 +357,7 @@ class WebRTCAudioService {
         outlets = [],
         audioId,
         audioName,
+        targetMode = "all",
     }) {
         try {
             console.log("====================================");
@@ -434,6 +439,7 @@ class WebRTCAudioService {
                 audioName,
                 audioUrl,
                 outlets,
+                targetMode,
             });
 
             // ====================================================

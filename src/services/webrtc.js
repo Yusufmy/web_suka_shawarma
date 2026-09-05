@@ -138,7 +138,7 @@ class WebRTCService {
 
             const baseConstraints = {
                 echoCancellation: true,
-                noiseSuppression: true,
+                noiseSuppression: false, // Hindari voice ducking/gating agresif browser yang memotong kata
                 autoGainControl: true,
             };
 
@@ -216,6 +216,25 @@ class WebRTCService {
             this.peerConnections.get(String(outletId)) ||
             null
         );
+    }
+
+    optimizeAudioSdp(sdp) {
+        if (!sdp) return sdp;
+
+        // Cari Opus payload type (biasanya 111)
+        const match = sdp.match(/a=rtpmap:(\d+)\s+opus\/48000/i);
+        if (!match) return sdp;
+
+        const payloadType = match[1];
+        const fmtpRegex = new RegExp(`^a=fmtp:${payloadType}\\s+(.*)$`, "m");
+        const customParams = "minptime=10;useinbandfec=1;usedtx=1;maxaveragebitrate=28000;stereo=0;sprop-stereo=0;cbr=0";
+
+        if (fmtpRegex.test(sdp)) {
+            return sdp.replace(fmtpRegex, `a=fmtp:${payloadType} ${customParams}`);
+        } else {
+            const rtpmapRegex = new RegExp(`(a=rtpmap:${payloadType}\\s+opus\\/48000\\/[^\\r\\n]+[\\r\\n]+)`);
+            return sdp.replace(rtpmapRegex, `$1a=fmtp:${payloadType} ${customParams}\r\n`);
+        }
     }
 
     // ============================================================
@@ -433,7 +452,13 @@ class WebRTCService {
             const offer =
                 await peerConnection.createOffer();
 
-            await peerConnection.setLocalDescription(offer);
+            const optimizedSdp = this.optimizeAudioSdp(offer.sdp);
+            const modifiedOffer = new RTCSessionDescription({
+                type: offer.type,
+                sdp: optimizedSdp,
+            });
+
+            await peerConnection.setLocalDescription(modifiedOffer);
 
             console.log(
                 `📦 Offer created for peer ${peerKey}`

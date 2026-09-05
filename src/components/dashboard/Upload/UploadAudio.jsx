@@ -714,6 +714,7 @@ export default function UploadAudio({
         audioName:
           audioItem.original_name ||
           audioItem.name,
+        targetMode: targetMode,
       });
 
       // ========================================================
